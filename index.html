@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="Explore the Obsidian card in an interactive 3D viewer." />
+    <title>OBSIDIAN — Interactive object study</title>
+    <link rel="preconnect" href="https://ajax.googleapis.com" />
+    <link rel="stylesheet" href="./styles.css?v=obsidian-rev-1" />
+    <script async src="https://ga.jspm.io/npm:es-module-shims@2.6.2/dist/es-module-shims.js"></script>
+    <script type="importmap">
+      {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.174.0/build/three.module.min.js"}}
+    </script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.1.0/dist/model-viewer-module.min.js"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer-effects@1.5.0/dist/model-viewer-effects.min.js"></script>
+    <script src="./app.js?v=obsidian-rev-1" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="wordmark" href="#top" aria-label="Obsidian home">
+        <span class="wordmark-mark" aria-hidden="true"></span>
+        <span>STUDIO / OBJECTS</span>
+      </a>
+      <a class="top-link" href="#details">Model details <span aria-hidden="true">↘</span></a>
+    </header>
+    <main id="top">
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <p class="eyebrow"><span class="eyebrow-dot"></span> INTERACTIVE OBJECT STUDY</p>
+          <h1 id="page-title">OBSIDIAN<span class="period">.</span></h1>
+          <p class="intro">Precision, made tangible.<br />A closer look at every edge.</p>
+          <a class="text-link" href="#details">Explore the details <span aria-hidden="true">↓</span></a>
+        </div>
+        <div class="viewer-shell">
+          <div class="viewer-stage">
+            <model-viewer
+              id="obsidian-model"
+              style="transform: scale(0.65); transform-origin: center center;"
+              src="./obsidian-2k.glb?v=obsidian-rev-2k"
+              alt="Obsidian card in a centered 3D view"
+              camera-orbit="0deg 82deg 110%"
+              orientation="0deg -15deg -15deg"
+              interpolation-decay="60"
+              camera-target="auto auto auto"
+              field-of-view="28deg"
+              environment-image="./HDR_Light_Studio_Free_HDRI_Design_07_down30_left60.hdr"
+              exposure="1.2"
+              shadow-intensity="1.1"
+              tone-mapping="aces"
+              loading="eager"
+            >
+              <effect-composer render-mode="quality" msaa="2">
+                <bloom-effect strength="0.28" threshold="0.78" radius="0.6" smoothing="0.08"></bloom-effect>
+                <color-grade-effect></color-grade-effect>
+              </effect-composer>
+              <div class="load-state" slot="poster">
+                <span class="loader-ring" aria-hidden="true"></span>
+                <span>Loading the model</span>
+              </div>
+              <div class="progress-track" slot="progress-bar" aria-hidden="true" style="display: none;">
+                <span class="progress-fill"></span>
+              </div>
+            </model-viewer>
+          </div>
+        </div>
+      </section>
+      <section class="details" id="details" aria-labelledby="details-title">
+        <div class="details-heading">
+          <p class="eyebrow">BUILT FOR THE WEB</p>
+          <h2 id="details-title">Made to be explored.</h2>
+        </div>
+        <p class="details-copy">
+          The Obsidian card is presented as a high-detail 3D model, composed for the web.
+        </p>
+        <div class="spec-grid" aria-label="Model specifications">
+          <div class="spec"><span class="spec-label">FORMAT</span><strong>GLB 2.0</strong></div>
+          <div class="spec"><span class="spec-label">SCENE PARTS</span><strong>6 objects</strong></div>
+          <div class="spec"><span class="spec-label">GEOMETRY</span><strong>948,664 triangles</strong></div>
+          <div class="spec"><span class="spec-label">DOWNLOAD</span><strong>43.8 MB</strong></div>
+        </div>
+      </section>
+    </main>
+    <footer class="footer">
+      <span>OBSIDIAN / 3D OBJECT STUDY</span>
+      <a href="#top">Back to top ↑</a>
+    </footer>
+  </body>
+</html>
