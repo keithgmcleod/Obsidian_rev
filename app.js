@@ -52,6 +52,7 @@ function selectCard(cardId, updateAddress = true) {
   selectedCard = cards[cardId] ? cardId : "obsidian";
   showingBack = false;
   sideYaw = 0;
+  setPhysicalCardPose();
   viewer.setAttribute("aria-pressed", "false");
   viewer.setAttribute("aria-label", `${card.name} card, front side. Activate to view the back.`);
 
@@ -102,6 +103,7 @@ function selectCard(cardId, updateAddress = true) {
 function flipCard() {
   if (!cards[selectedCard]?.source) return;
   showingBack = !showingBack;
+  setPhysicalCardPose();
   const side = showingBack ? "back" : "front";
   const action = showingBack ? "front" : "back";
   const card = cards[selectedCard];
@@ -109,6 +111,20 @@ function flipCard() {
   viewer.setAttribute("aria-label", `${card.name} card, showing the ${side} side. Activate to view the ${action}.`);
   viewer.setAttribute("title", `Card ${side}. Click or press Enter to turn to the ${action}.`);
   queueCardTilt();
+}
+
+function setPhysicalCardPose() {
+  // Mirror the card's pitch on the reverse face so its top edge leans away
+  // from the rear camera, matching the front-side presentation.
+  activeOrientation = {
+    ...baseOrientation,
+    pitch: showingBack ? -baseOrientation.pitch : baseOrientation.pitch,
+  };
+  viewer.setAttribute(
+    "orientation",
+    `${activeOrientation.roll}deg ${activeOrientation.pitch}deg ${activeOrientation.yaw}deg`,
+  );
+  queueReflectionAlignment();
 }
 
 function updateCardTilt() {
@@ -131,7 +147,6 @@ function updateCardTilt() {
   const theta = baseCameraOrbit.theta + sideYaw + currentPointer.x * frontTilt.yaw * tiltDirection;
   const phi = baseCameraOrbit.phi + currentPointer.y * frontTilt.pitch * tiltDirection;
   viewer.cameraOrbit = `${theta}deg ${phi}deg ${baseCameraOrbit.radius}`;
-  activeOrientation = { ...baseOrientation };
   queueReflectionAlignment();
 
   frame = 0;
