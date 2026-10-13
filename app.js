@@ -37,6 +37,7 @@ const cards = {
 
 const frontTilt = { yaw: 15, pitch: 15 };
 const baseOrientation = { roll: 0, pitch: -15, yaw: -15 };
+const baseCameraOrbit = { theta: 0, phi: 82, radius: "110%" };
 let pointer = { x: 0, y: 0 };
 let currentPointer = { x: 0, y: 0 };
 let frame = 0;
@@ -99,19 +100,12 @@ function updateCardTilt() {
     && Math.abs(pointer.y - currentPointer.y) < 0.001;
   if (settled) currentPointer = { ...pointer };
 
-  const yaw = -currentPointer.x * frontTilt.yaw;
-  const pitch = -currentPointer.y * frontTilt.pitch;
-  const orientation = [
-    baseOrientation.roll,
-    baseOrientation.pitch + pitch,
-    baseOrientation.yaw + yaw,
-  ].map((angle) => angle + "deg").join(" ");
-  activeOrientation = {
-    roll: baseOrientation.roll,
-    pitch: baseOrientation.pitch + pitch,
-    yaw: baseOrientation.yaw + yaw,
-  };
-  viewer.orientation = orientation;
+  // Orbit the camera around the card instead of changing model orientation.
+  // This keeps the HDR environment fixed and avoids model-viewer scene update errors.
+  const theta = baseCameraOrbit.theta + currentPointer.x * frontTilt.yaw;
+  const phi = baseCameraOrbit.phi + currentPointer.y * frontTilt.pitch;
+  viewer.cameraOrbit = `${theta}deg ${phi}deg ${baseCameraOrbit.radius}`;
+  activeOrientation = { ...baseOrientation };
   queueReflectionAlignment();
 
   frame = 0;
