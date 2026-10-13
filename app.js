@@ -288,6 +288,7 @@ function reduceBlueMetalness() {
   if (selectedCard !== "blue" || !model || model === blueMetalnessAdjustedModel) return;
 
   for (const material of model.materials || []) {
+    if ((material.name || "").toLowerCase().includes("hologram")) continue;
     const pbr = material.pbrMetallicRoughness;
     if (!pbr || typeof pbr.metallicFactor !== "number") continue;
     pbr.setMetallicFactor(Math.max(0, pbr.metallicFactor * 0.9));
