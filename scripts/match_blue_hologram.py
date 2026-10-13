@@ -34,10 +34,10 @@ def read_glb(path):
         offset = end
 
     json_index = next((i for i, (kind, _) in enumerate(chunks) if kind == b"JSON"), None)
-    bin_index = next((i for i, (kind, _) in enumerate(chunks) if kind == b"BIN\\0"), None)
+    bin_index = next((i for i, (kind, _) in enumerate(chunks) if kind == b"BIN\0"), None)
     if json_index is None or bin_index is None:
         raise ValueError(f"{path}: GLB must contain JSON and BIN chunks")
-    document = json.loads(chunks[json_index][1].rstrip(b" \\0").decode("utf-8"))
+    document = json.loads(chunks[json_index][1].rstrip(b" \0").decode("utf-8"))
     return chunks, json_index, bin_index, document
 
 
@@ -97,7 +97,7 @@ def main():
     while offset < len(obsidian_raw):
         length, chunk_type = CHUNK_HEADER.unpack_from(obsidian_raw, offset)
         start = offset + CHUNK_HEADER.size
-        if chunk_type == b"BIN\\0":
+        if chunk_type == b"BIN\0":
             obsidian_binary = obsidian_raw[start:start + length]
             break
         offset = start + length
@@ -188,7 +188,7 @@ def main():
     json_bytes = json.dumps(blue_doc, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     json_bytes += b" " * ((-len(json_bytes)) % ALIGNMENT)
     blue_chunks[blue_json_index] = (b"JSON", json_bytes)
-    blue_chunks[blue_bin_index] = (b"BIN\\0", bytes(blue_binary))
+    blue_chunks[blue_bin_index] = (b"BIN\0", bytes(blue_binary))
 
     output = bytearray(GLB_HEADER.pack(b"glTF", 2, 0))
     for chunk_type, payload in blue_chunks:
