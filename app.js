@@ -58,9 +58,10 @@ function selectCard(cardId, updateAddress = true) {
   detailsCopy.textContent = card.details;
   document.title = card.name.toUpperCase() + " — BILT card study";
   placeholderName.textContent = card.title;
-  viewer.alt = card.name + " card in a centered 3D view";
 
   if (card.source) {
+    if (viewer.getAttribute("src") !== card.source) viewer.setAttribute("src", card.source);
+    viewer.setAttribute("alt", card.name + " card in a centered 3D view");
     viewer.hidden = false;
     viewer.setAttribute("aria-hidden", "false");
     placeholder.hidden = true;
