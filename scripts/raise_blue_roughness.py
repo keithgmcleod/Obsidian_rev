@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Raise the BILT Blue GLB roughness texture by 20 percent."""
+"""Raise the BILT Blue GLB roughness texture by 35 percent."""
 
 import io
 import json
@@ -11,7 +11,7 @@ from PIL import Image
 
 GLB_HEADER = struct.Struct("<4sII")
 CHUNK_HEADER = struct.Struct("<I4s")
-ROUGHNESS_MULTIPLIER = 1.20
+ROUGHNESS_MULTIPLIER = 1.35
 
 
 def align4(value: int) -> int:
@@ -126,7 +126,7 @@ def main():
     path.write_bytes(output)
 
     print(
-        f"Raised the BILT Blue ORM roughness channel by 10% "
+        f"Raised the BILT Blue ORM roughness channel by 35% "
         f"({len(updated_png):,} byte PNG; {len(output):,} byte GLB)."
     )
 
