@@ -46,6 +46,7 @@ let reflectionFrame = 0;
 let selectedCard = "obsidian";
 let showingBack = false;
 let sideYaw = 0;
+let blueMetalnessAdjustedModel = null;
 
 function selectCard(cardId, updateAddress = true) {
   const card = cards[cardId] ? cards[cardId] : cards.obsidian;
@@ -282,7 +283,20 @@ viewer.addEventListener("progress", (event) => {
   if (progressFill) progressFill.style.width = Math.round(event.detail.totalProgress * 100) + "%";
 });
 
+function reduceBlueMetalness() {
+  const model = viewer.model;
+  if (selectedCard !== "blue" || !model || model === blueMetalnessAdjustedModel) return;
+
+  for (const material of model.materials || []) {
+    const pbr = material.pbrMetallicRoughness;
+    if (!pbr || typeof pbr.metallicFactor !== "number") continue;
+    pbr.setMetallicFactor(Math.max(0, pbr.metallicFactor * 0.9));
+  }
+  blueMetalnessAdjustedModel = model;
+}
+
 viewer.addEventListener("load", () => {
+  reduceBlueMetalness();
   updateCardTilt();
   queueReflectionAlignment();
   if (progressFill) progressFill.style.width = "100%";
