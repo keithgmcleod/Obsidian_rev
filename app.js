@@ -44,10 +44,16 @@ let frame = 0;
 let activeOrientation = { ...baseOrientation };
 let reflectionFrame = 0;
 let selectedCard = "obsidian";
+let showingBack = false;
+let sideYaw = 0;
 
 function selectCard(cardId, updateAddress = true) {
   const card = cards[cardId] ? cards[cardId] : cards.obsidian;
   selectedCard = cards[cardId] ? cardId : "obsidian";
+  showingBack = false;
+  sideYaw = 0;
+  viewer.setAttribute("aria-pressed", "false");
+  viewer.setAttribute("aria-label", `${card.name} card, front side. Activate to view the back.`);
 
   selectorButtons.forEach((button) => {
     const selected = button.dataset.card === selectedCard;
@@ -84,6 +90,7 @@ function selectCard(cardId, updateAddress = true) {
   }
 
   resetCards();
+  queueCardTilt();
   queueReflectionAlignment();
   if (updateAddress) {
     const url = new URL(window.location.href);
@@ -92,17 +99,35 @@ function selectCard(cardId, updateAddress = true) {
   }
 }
 
+function flipCard() {
+  if (!cards[selectedCard]?.source) return;
+  showingBack = !showingBack;
+  const side = showingBack ? "back" : "front";
+  const action = showingBack ? "front" : "back";
+  const card = cards[selectedCard];
+  viewer.setAttribute("aria-pressed", String(showingBack));
+  viewer.setAttribute("aria-label", `${card.name} card, showing the ${side} side. Activate to view the ${action}.`);
+  viewer.setAttribute("title", `Card ${side}. Click or press Enter to turn to the ${action}.`);
+  queueCardTilt();
+}
+
 function updateCardTilt() {
   currentPointer.x += (pointer.x - currentPointer.x) * 0.1;
   currentPointer.y += (pointer.y - currentPointer.y) * 0.1;
 
-  const settled = Math.abs(pointer.x - currentPointer.x) < 0.001
+  const pointerSettled = Math.abs(pointer.x - currentPointer.x) < 0.001
     && Math.abs(pointer.y - currentPointer.y) < 0.001;
-  if (settled) currentPointer = { ...pointer };
+  if (pointerSettled) currentPointer = { ...pointer };
+
+  const targetSideYaw = showingBack ? 180 : 0;
+  sideYaw += (targetSideYaw - sideYaw) * 0.12;
+  const sideSettled = Math.abs(targetSideYaw - sideYaw) < 0.05;
+  if (sideSettled) sideYaw = targetSideYaw;
+  const settled = pointerSettled && sideSettled;
 
   // Orbit the camera around the card instead of changing model orientation.
   // This keeps the HDR environment fixed and avoids model-viewer scene update errors.
-  const theta = baseCameraOrbit.theta + currentPointer.x * frontTilt.yaw;
+  const theta = baseCameraOrbit.theta + sideYaw + currentPointer.x * frontTilt.yaw;
   const phi = baseCameraOrbit.phi + currentPointer.y * frontTilt.pitch;
   viewer.cameraOrbit = `${theta}deg ${phi}deg ${baseCameraOrbit.radius}`;
   activeOrientation = { ...baseOrientation };
@@ -223,6 +248,13 @@ function resetCards() {
 
 selectorButtons.forEach((button) => {
   button.addEventListener("click", () => selectCard(button.dataset.card));
+});
+viewer.addEventListener("click", flipCard);
+viewer.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    flipCard();
+  }
 });
 window.addEventListener("pointermove", moveWithPointer, { passive: true, capture: true });
 stage.addEventListener("pointerleave", resetCards, { passive: true });
