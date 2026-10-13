@@ -37,7 +37,7 @@ jobs:
           python-version: "3.12"
       - name: Install image processing dependency
         run: python -m pip install --disable-pip-version-check Pillow
-      - name: Raise BILT Blue roughness by 10 percent
+      - name: Raise BILT Blue roughness by 20 percent
         run: python scripts/raise_blue_roughness.py bilt-blue-2k.glb
       - name: Configure Pages
         uses: actions/configure-pages@v5
