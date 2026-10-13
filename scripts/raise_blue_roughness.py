@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Raise the BILT Blue GLB roughness texture by 10 percent."""
+"""Raise the BILT Blue GLB roughness texture by 20 percent."""
 
 import io
 import json
@@ -11,7 +11,7 @@ from PIL import Image
 
 GLB_HEADER = struct.Struct("<4sII")
 CHUNK_HEADER = struct.Struct("<I4s")
-ROUGHNESS_MULTIPLIER = 1.10
+ROUGHNESS_MULTIPLIER = 1.20
 
 
 def align4(value: int) -> int:
