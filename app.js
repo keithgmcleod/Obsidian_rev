@@ -13,9 +13,10 @@ const cards = {
   blue: {
     name: "BILT Blue",
     title: "BILT BLUE",
-    intro: "The BILT Blue model will appear here once its GLB is added.",
-    details: "The BILT Blue model slot is ready for its 3D file.",
-    source: null,
+    intro: "Precision, made tangible.<br />A closer look at every edge.",
+    details: "The BILT Blue card is presented as a high-detail 3D model, composed for the web.",
+    source: "./blue-2k.glb?v=bilt-blue-2k",
+    specs: { format: "GLB 2.0", parts: "3 objects", geometry: "1,295,072 triangles", download: "47.8 MB" },
   },
   obsidian: {
     name: "BILT Obsidian",
