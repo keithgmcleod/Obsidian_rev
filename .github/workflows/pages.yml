@@ -29,7 +29,7 @@ jobs:
           rm obsidian-2k.glb.part.00 obsidian-2k.glb.part.01 obsidian-2k.glb.part.02
       - name: Reassemble BILT Blue model
         run: |
-          cat blue-model-parts/part.* > blue-2k.glb
+          cat blue-model-parts/part.* > bilt-blue-2k.glb
           rm -rf blue-model-parts
       - name: Configure Pages
         uses: actions/configure-pages@v5
