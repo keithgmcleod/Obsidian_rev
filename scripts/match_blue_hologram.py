@@ -2,13 +2,10 @@
 """Copy the Obsidian hologram maps onto the matching BILT Blue material."""
 
 import copy
-import io
 import json
 import struct
 import sys
 from pathlib import Path
-
-from PIL import Image
 
 GLB_HEADER = struct.Struct("<4sII")
 CHUNK_HEADER = struct.Struct("<I4s")
@@ -73,14 +70,81 @@ def image_bytes(document, binary, texture_info, path, role):
 
 
 
-def rotate_hologram_png(png_bytes):
-    """Rotate Obsidian's hologram maps to match the Blue card's UV orientation."""
-    with Image.open(io.BytesIO(png_bytes)) as source:
-        source.load()
-        rotated = source.transpose(Image.Transpose.ROTATE_90)
-        output = io.BytesIO()
-        rotated.save(output, format="PNG", optimize=False)
-        return output.getvalue()
+def mesh_for_material(document, material_index, path):
+    matches = [
+        mesh_index
+        for mesh_index, mesh in enumerate(document.get("meshes", []))
+        if any(primitive.get("material") == material_index for primitive in mesh.get("primitives", []))
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"{path}: expected one hologram mesh, found {len(matches)}")
+    return matches[0]
+
+
+def copy_mesh_accessor(source_document, source_binary, accessor_index, target_document, target_binary, view_map):
+    accessor = copy.deepcopy(source_document["accessors"][accessor_index])
+    source_view_index = accessor.get("bufferView")
+    if source_view_index is None or accessor.get("sparse"):
+        raise ValueError("Hologram mesh must use non-sparse buffer-backed accessors")
+
+    if source_view_index not in view_map:
+        source_view = source_document["bufferViews"][source_view_index]
+        start = source_view.get("byteOffset", 0)
+        end = start + source_view["byteLength"]
+        if end > len(source_binary):
+            raise ValueError("Obsidian hologram mesh bufferView exceeds its BIN chunk")
+        while len(target_binary) % ALIGNMENT:
+            target_binary.append(0)
+        copied_view = copy.deepcopy(source_view)
+        copied_view["buffer"] = 0
+        copied_view["byteOffset"] = len(target_binary)
+        target_binary.extend(source_binary[start:end])
+        view_map[source_view_index] = len(target_document.setdefault("bufferViews", []))
+        target_document["bufferViews"].append(copied_view)
+
+    accessor["bufferView"] = view_map[source_view_index]
+    copied_accessor_index = len(target_document.setdefault("accessors", []))
+    target_document["accessors"].append(accessor)
+    return copied_accessor_index
+
+
+def replace_blue_hologram_geometry(blue_document, blue_binary, obsidian_document, obsidian_binary,
+                                   blue_material_index, obsidian_material_index, blue_path, obsidian_path):
+    blue_mesh_index = mesh_for_material(blue_document, blue_material_index, blue_path)
+    obsidian_mesh_index = mesh_for_material(obsidian_document, obsidian_material_index, obsidian_path)
+    source_mesh = obsidian_document["meshes"][obsidian_mesh_index]
+    replacement_mesh = copy.deepcopy(source_mesh)
+    view_map = {}
+
+    for primitive in replacement_mesh.get("primitives", []):
+        for semantic, accessor_index in list(primitive.get("attributes", {}).items()):
+            primitive["attributes"][semantic] = copy_mesh_accessor(
+                obsidian_document, obsidian_binary, accessor_index, blue_document, blue_binary, view_map
+            )
+        if "indices" in primitive:
+            primitive["indices"] = copy_mesh_accessor(
+                obsidian_document, obsidian_binary, primitive["indices"], blue_document, blue_binary, view_map
+            )
+        if "material" in primitive:
+            primitive["material"] = blue_material_index
+
+    replacement_mesh["name"] = source_mesh.get("name", "Obsidian hologram")
+    blue_document["meshes"][blue_mesh_index] = replacement_mesh
+
+    blue_nodes = [node for node in blue_document.get("nodes", []) if node.get("mesh") == blue_mesh_index]
+    source_nodes = [node for node in obsidian_document.get("nodes", []) if node.get("mesh") == obsidian_mesh_index]
+    if len(blue_nodes) != 1 or len(source_nodes) != 1:
+        raise ValueError("Expected one scene node for each hologram mesh")
+
+    blue_node = blue_nodes[0]
+    source_node = source_nodes[0]
+    for key in ("translation", "rotation", "scale", "matrix"):
+        blue_node.pop(key, None)
+        if key in source_node:
+            blue_node[key] = copy.deepcopy(source_node[key])
+    blue_node["name"] = source_node.get("name", "Obsidian hologram")
+    return blue_mesh_index
+
 
 def texture_info_at(material, role):
     pbr = material.setdefault("pbrMetallicRoughness", {})
@@ -117,6 +181,15 @@ def main():
     if obsidian_binary is None:
         raise ValueError(f"{obsidian_path}: missing BIN chunk")
 
+    blue_material_index = blue_doc["materials"].index(blue_material)
+    obsidian_material_index = obsidian_doc["materials"].index(obsidian_material)
+    replace_blue_hologram_geometry(
+        blue_doc, blue_binary, obsidian_doc, obsidian_binary,
+        blue_material_index, obsidian_material_index, blue_path, obsidian_path
+    )
+    blue_doc["materials"][blue_material_index] = copy.deepcopy(obsidian_material)
+    blue_material = blue_doc["materials"][blue_material_index]
+
     # Copy each Obsidian map into a new embedded Blue image, then point only the
     # Blue hologram material at it. Other Blue card maps remain untouched.
     new_image_by_source = {}
@@ -133,7 +206,6 @@ def main():
         png, source_image, source_texture = image_bytes(
             obsidian_doc, obsidian_binary, obsidian_info, obsidian_path, role
         )
-        png = rotate_hologram_png(png)
         source_image_key = source_texture["source"]
         if source_image_key not in new_image_by_source:
             while len(blue_binary) % ALIGNMENT:
