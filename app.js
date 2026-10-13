@@ -2,6 +2,37 @@ const viewer = document.querySelector("#obsidian-model");
 const stage = document.querySelector(".viewer-stage");
 const progressFill = document.querySelector(".progress-fill");
 const loadState = document.querySelector(".load-state");
+const placeholder = document.querySelector("#model-placeholder");
+const placeholderName = document.querySelector("#placeholder-name");
+const title = document.querySelector("#page-title");
+const intro = document.querySelector("#card-intro");
+const detailsCopy = document.querySelector("#details-copy");
+const selectorButtons = [...document.querySelectorAll("[data-card]")];
+
+const cards = {
+  blue: {
+    name: "BILT Blue",
+    title: "BILT BLUE",
+    intro: "The BILT Blue model will appear here once its GLB is added.",
+    details: "The BILT Blue model slot is ready for its 3D file.",
+    source: null,
+  },
+  obsidian: {
+    name: "BILT Obsidian",
+    title: "BILT OBSIDIAN",
+    intro: "Precision, made tangible.<br />A closer look at every edge.",
+    details: "The BILT Obsidian card is presented as a high-detail 3D model, composed for the web.",
+    source: "./obsidian-2k.glb?v=obsidian-rev-2k",
+    specs: { format: "GLB 2.0", parts: "6 objects", geometry: "948,664 triangles", download: "43.8 MB" },
+  },
+  palladium: {
+    name: "BILT Palladium",
+    title: "BILT PALLADIUM",
+    intro: "The BILT Palladium model will appear here once its GLB is added.",
+    details: "The BILT Palladium model slot is ready for its 3D file.",
+    source: null,
+  },
+};
 
 const frontTilt = { yaw: 15, pitch: 15 };
 const baseOrientation = { roll: 0, pitch: -15, yaw: -15 };
@@ -10,6 +41,52 @@ let currentPointer = { x: 0, y: 0 };
 let frame = 0;
 let activeOrientation = { ...baseOrientation };
 let reflectionFrame = 0;
+let selectedCard = "obsidian";
+
+function selectCard(cardId, updateAddress = true) {
+  const card = cards[cardId] ? cards[cardId] : cards.obsidian;
+  selectedCard = cards[cardId] ? cardId : "obsidian";
+
+  selectorButtons.forEach((button) => {
+    const selected = button.dataset.card === selectedCard;
+    button.setAttribute("aria-pressed", String(selected));
+  });
+
+  title.innerHTML = card.title + '<span class="period">.</span>';
+  intro.innerHTML = card.intro;
+  detailsCopy.textContent = card.details;
+  document.title = card.name.toUpperCase() + " — BILT card study";
+  placeholderName.textContent = card.title;
+
+  if (card.source) {
+    viewer.hidden = false;
+    viewer.setAttribute("aria-hidden", "false");
+    placeholder.hidden = true;
+  } else {
+    viewer.hidden = true;
+    viewer.setAttribute("aria-hidden", "true");
+    placeholder.hidden = false;
+  }
+
+  for (const [key, value] of Object.entries(card.specs || {})) {
+    const target = document.querySelector('[data-spec="' + key + '"]');
+    if (target) target.textContent = value;
+  }
+  if (!card.specs) {
+    document.querySelector('[data-spec="format"]').textContent = "Awaiting GLB";
+    document.querySelector('[data-spec="parts"]').textContent = "—";
+    document.querySelector('[data-spec="geometry"]').textContent = "—";
+    document.querySelector('[data-spec="download"]').textContent = "—";
+  }
+
+  resetCards();
+  queueReflectionAlignment();
+  if (updateAddress) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("card", selectedCard);
+    window.history.replaceState({}, "", url);
+  }
+}
 
 function updateCardTilt() {
   currentPointer.x += (pointer.x - currentPointer.x) * 0.1;
@@ -17,9 +94,7 @@ function updateCardTilt() {
 
   const settled = Math.abs(pointer.x - currentPointer.x) < 0.001
     && Math.abs(pointer.y - currentPointer.y) < 0.001;
-  if (settled) {
-    currentPointer = { ...pointer };
-  }
+  if (settled) currentPointer = { ...pointer };
 
   const yaw = -currentPointer.x * frontTilt.yaw;
   const pitch = -currentPointer.y * frontTilt.pitch;
@@ -64,7 +139,7 @@ function rotatePoint(point, orientation) {
 }
 
 function updateReflectionAlignment() {
-  if (!viewer?.getDimensions || !viewer?.getCameraOrbit || !viewer?.getCameraTarget) return;
+  if (selectedCard !== "obsidian" || !viewer?.getDimensions || !viewer?.getCameraOrbit || !viewer?.getCameraTarget) return;
   const bounds = viewer.getDimensions();
   const orbit = viewer.getCameraOrbit();
   const target = viewer.getCameraTarget();
@@ -110,9 +185,9 @@ function updateReflectionAlignment() {
   }
   if (!Number.isFinite(modelBottom)) return;
 
-  const rect = viewer.getBoundingClientRect();
   const transform = window.getComputedStyle(viewer).transform;
-  const scale = transform === "none" ? 1 : Math.hypot(new DOMMatrixReadOnly(transform).c, new DOMMatrixReadOnly(transform).d);
+  const matrix = transform === "none" ? null : new DOMMatrixReadOnly(transform);
+  const scale = matrix ? Math.hypot(matrix.c, matrix.d) : 1;
   const safeScale = scale || 1;
   const fixedGap = 26;
   const reflectionOffset = (modelBottom * safeScale + fixedGap) / safeScale - height;
@@ -149,6 +224,9 @@ function resetCards() {
   queueCardTilt();
 }
 
+selectorButtons.forEach((button) => {
+  button.addEventListener("click", () => selectCard(button.dataset.card));
+});
 window.addEventListener("pointermove", moveWithPointer, { passive: true, capture: true });
 stage.addEventListener("pointerleave", resetCards, { passive: true });
 window.addEventListener("blur", resetCards);
@@ -156,13 +234,13 @@ window.addEventListener("resize", queueReflectionAlignment, { passive: true });
 new ResizeObserver(queueReflectionAlignment).observe(stage);
 
 viewer.addEventListener("progress", (event) => {
-  progressFill.style.width = Math.round(event.detail.totalProgress * 100) + "%";
+  if (progressFill) progressFill.style.width = Math.round(event.detail.totalProgress * 100) + "%";
 });
 
 viewer.addEventListener("load", () => {
   updateCardTilt();
   queueReflectionAlignment();
-  progressFill.style.width = "100%";
+  if (progressFill) progressFill.style.width = "100%";
   window.setTimeout(() => loadState?.setAttribute("hidden", ""), 350);
 });
 
@@ -170,3 +248,6 @@ viewer.addEventListener("error", () => {
   const label = loadState?.querySelector("span:last-child");
   if (label) label.textContent = "Model could not be loaded";
 });
+
+const requestedCard = new URLSearchParams(window.location.search).get("card");
+selectCard(requestedCard || "obsidian", false);
