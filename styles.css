@@ -135,3 +135,30 @@ h2 { margin: 0; max-width: 500px; font-size: clamp(30px, 4vw, 53px); line-height
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
+
+button.card-option { appearance: none; border: 1px solid rgba(255,255,255,.28); background: transparent; cursor: pointer; }
+button.card-option:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.card-selector { display: grid; grid-template-columns: 1fr; gap: 7px; margin: 28px 0 0; max-width: 280px; }
+.card-option { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 12px; color: rgba(255,255,255,.66); text-align: left; font-size: 11px; transition: border-color 180ms ease, color 180ms ease, background 180ms ease; }
+.card-option:hover { border-color: rgba(255,255,255,.7); color: #fff; }
+.card-option[aria-pressed="true"] { color: #fff; border-color: #fff; background: rgba(255,255,255,.1); }
+.option-index { color: rgba(255,255,255,.48); font: 9px var(--mono); letter-spacing: .06em; }
+.card-option[aria-pressed="true"] .option-index { color: #fff; }
+h1 { font-size: clamp(40px, 5vw, 78px); margin-top: 28px; letter-spacing: -.085em; }
+.model-viewer[hidden] { display: none !important; }
+.model-placeholder { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; overflow: hidden; background: #000; }
+.model-placeholder[hidden] { display: none !important; }
+.placeholder-content { width: min(78%, 520px); min-height: min(62vh, 480px); display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 32px; border: 1px solid rgba(255,255,255,.22); text-align: center; }
+.placeholder-kicker { color: rgba(255,255,255,.62); font: 9px var(--mono); letter-spacing: .12em; }
+.placeholder-name { display: block; margin: 22px 0; font-size: clamp(44px, 7vw, 96px); line-height: .95; letter-spacing: -.08em; font-weight: 500; }
+.placeholder-note { color: rgba(255,255,255,.7); font-size: 12px; }
+@media (max-width: 760px) {
+  .card-selector { max-width: 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 24px; }
+  .card-option { min-height: 44px; gap: 6px; justify-content: center; padding: 0 7px; font-size: 10px; }
+  .option-index { display: none; }
+  h1 { font-size: clamp(38px, 9vw, 64px); }
+  .placeholder-content { width: 84%; min-height: 48vh; }
+}
+@media (max-width: 420px) {
+  .card-option { font-size: 9px; }
+}
