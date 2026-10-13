@@ -2,10 +2,13 @@
 """Copy the Obsidian hologram maps onto the matching BILT Blue material."""
 
 import copy
+import io
 import json
 import struct
 import sys
 from pathlib import Path
+
+from PIL import Image
 
 GLB_HEADER = struct.Struct("<4sII")
 CHUNK_HEADER = struct.Struct("<I4s")
@@ -69,6 +72,16 @@ def image_bytes(document, binary, texture_info, path, role):
     return bytes(binary[start:end]), image, texture
 
 
+
+def rotate_hologram_png(png_bytes):
+    """Rotate Obsidian's hologram maps to match the Blue card's UV orientation."""
+    with Image.open(io.BytesIO(png_bytes)) as source:
+        source.load()
+        rotated = source.transpose(Image.Transpose.ROTATE_90)
+        output = io.BytesIO()
+        rotated.save(output, format="PNG", optimize=False)
+        return output.getvalue()
+
 def texture_info_at(material, role):
     pbr = material.setdefault("pbrMetallicRoughness", {})
     clearcoat = material.setdefault("extensions", {}).setdefault("KHR_materials_clearcoat", {})
@@ -120,6 +133,7 @@ def main():
         png, source_image, source_texture = image_bytes(
             obsidian_doc, obsidian_binary, obsidian_info, obsidian_path, role
         )
+        png = rotate_hologram_png(png)
         source_image_key = source_texture["source"]
         if source_image_key not in new_image_by_source:
             while len(blue_binary) % ALIGNMENT:
