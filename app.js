@@ -23,7 +23,7 @@ const cards = {
     title: "BILT OBSIDIAN",
     intro: "Precision, made tangible.<br />A closer look at every edge.",
     details: "The BILT Obsidian card is presented as a high-detail 3D model, composed for the web.",
-    source: "./obsidian-2k.glb?v=obsidian-rev-2k",
+    source: "./obsidian-2k.glb?v=obsidian-roughness-plus50",
     specs: { format: "GLB 2.0", parts: "6 objects", geometry: "948,664 triangles", download: "43.8 MB" },
   },
   palladium: {
