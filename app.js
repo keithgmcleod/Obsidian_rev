@@ -249,7 +249,7 @@ viewer.addEventListener("load", () => {
 
 viewer.addEventListener("error", (event) => {
   const label = loadState?.querySelector("span:last-child");
-  if (label) label.textContent = "Model could not be loaded" + (event.detail?.sourceError?.message ? ": " + event.detail.sourceError.message : "");
+  if (label) label.textContent = event.detail?.sourceError?.stack || ("Model could not be loaded: " + (event.detail?.sourceError?.message || event.detail?.type || "unknown error"));
 });
 
 const requestedCard = new URLSearchParams(window.location.search).get("card");
