@@ -127,8 +127,9 @@ function updateCardTilt() {
 
   // Orbit the camera around the card instead of changing model orientation.
   // This keeps the HDR environment fixed and avoids model-viewer scene update errors.
-  const theta = baseCameraOrbit.theta + sideYaw + currentPointer.x * frontTilt.yaw;
-  const phi = baseCameraOrbit.phi + currentPointer.y * frontTilt.pitch;
+  const tiltDirection = showingBack ? -1 : 1;
+  const theta = baseCameraOrbit.theta + sideYaw + currentPointer.x * frontTilt.yaw * tiltDirection;
+  const phi = baseCameraOrbit.phi + currentPointer.y * frontTilt.pitch * tiltDirection;
   viewer.cameraOrbit = `${theta}deg ${phi}deg ${baseCameraOrbit.radius}`;
   activeOrientation = { ...baseOrientation };
   queueReflectionAlignment();
