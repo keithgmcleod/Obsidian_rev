@@ -15,7 +15,7 @@ const cards = {
     title: "BILT BLUE",
     intro: "Precision, made tangible.<br />A closer look at every edge.",
     details: "The BILT Blue card is presented as a high-detail 3D model, composed for the web.",
-    source: "./blue-2k.glb?v=bilt-blue-scene-fix-1",
+    source: "./blue-2k.glb?v=bilt-blue-scene-root-0",
     specs: { format: "GLB 2.0", parts: "3 objects", geometry: "1,295,072 triangles", download: "47.8 MB" },
   },
   obsidian: {
@@ -249,7 +249,7 @@ viewer.addEventListener("load", () => {
 
 viewer.addEventListener("error", (event) => {
   const label = loadState?.querySelector("span:last-child");
-  if (label) label.textContent = event.detail?.sourceError?.stack || ("Model could not be loaded: " + (event.detail?.sourceError?.message || event.detail?.type || "unknown error"));
+  if (label) label.textContent = "Model could not be loaded";
 });
 
 const requestedCard = new URLSearchParams(window.location.search).get("card");
