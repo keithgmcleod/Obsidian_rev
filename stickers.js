@@ -490,7 +490,7 @@ function textureFor(design) {
   }
   return textureCache.get(design.url);
 }
-function graffitiPaintTexture(source, colour, seed, rotation = 0) {
+function graffitiPaintTexture(source, colour, seed, rotation = 0, textDesign = true) {
   const random = seededRandom(seed), mask = document.createElement('canvas');
   const scale = Math.min(1, 1200 / source.image.width), padding = 48;
   const angle = THREE.MathUtils.degToRad(rotation);
@@ -505,6 +505,17 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0) {
   ink.save(); ink.translate(w / 2, padding + rotatedHeight / 2); ink.rotate(-angle);
   ink.drawImage(source.image, -sw / 2, -sh / 2, sw, sh); ink.restore();
   const pixels = ink.getImageData(0, 0, w, h).data;
+  const letterOutline = document.createElement('canvas'); letterOutline.width = w; letterOutline.height = h;
+  if (textDesign) {
+    const outline = letterOutline.getContext('2d');
+    for (let step = 0; step < 24; step++) {
+      const angle = step / 24 * Math.PI * 2;
+      outline.drawImage(mask, Math.cos(angle) * 9, Math.sin(angle) * 9);
+    }
+    outline.globalCompositeOperation = 'source-in';
+    const rgb = colour.match(/[a-f\d]{2}/gi).map(value => Math.round(parseInt(value, 16) * .38));
+    outline.fillStyle = `rgb(${rgb.join(',')})`; outline.fillRect(0, 0, w, h);
+  }
   const reveal = document.createElement('canvas'); reveal.width = w; reveal.height = h;
   const revealContext = reveal.getContext('2d'); revealContext.lineCap = 'round';
   // Drips begin on the lower edges of the actual letters, never on a sticker border.
@@ -536,6 +547,7 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0) {
   // Two soft coats give the edges a cloud of overspray around the solid letters.
   context.filter = 'blur(18px)'; context.globalAlpha = .5; context.drawImage(mask, 0, 0);
   context.filter = 'blur(6px)'; context.globalAlpha = .55; context.drawImage(mask, 0, 0);
+  if (textDesign) { context.filter = 'none'; context.globalAlpha = .98; context.drawImage(letterOutline, 0, 0); }
   context.filter = 'none'; context.globalAlpha = .94; context.drawImage(mask, 0, 0);
   const image = context.getImageData(0, 0, w, h), data = image.data;
   for (let i = 3; i < data.length; i += 4) {
@@ -548,11 +560,11 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0) {
       const tone = .85 + random() * .15;
       data[i - 3] *= tone; data[i - 2] *= tone; data[i - 1] *= tone;
     } else data[i] = Math.min(255, Math.round(data[i] * (grain > .72 ? 1.7 : .18)));
-    data[i] = Math.round(data[i] * .58);
+    data[i] = Math.round(data[i] * (textDesign ? .96 : .58));
   }
   context.putImageData(image, 0, 0);
   // Uneven gaps break up the coat into islands of pigment.
-  context.globalCompositeOperation = 'destination-out'; context.globalAlpha = .55;
+  context.globalCompositeOperation = 'destination-out'; context.globalAlpha = textDesign ? .18 : .55;
   for (let gap = 0; gap < Math.floor(w * h / 260); gap++) {
     const x = Math.floor(random() * w), y = Math.floor(random() * h);
     if (data[(y * w + x) * 4 + 3] < 20) continue;
@@ -603,7 +615,7 @@ function sprayTexture(source, colour, seed, designKey, rotation = 0) {
     pixels[i + 3] = ink ? pixels[i + 3] : 0;
   }
   context.putImageData(image, 0, 0);
-  return graffitiPaintTexture({ image: canvas }, colour, seed, rotation);
+  return graffitiPaintTexture({ image: canvas }, colour, seed, rotation, lettering);
 }
 function disposeDecal(entry) {
   wetPaint.delete(entry);
@@ -742,7 +754,9 @@ async function place(event) {
   } catch (error) { console.error(error); message('Could not load this sticker. Try importing a PNG or WebP.'); }
 }
 function stickerScale(entry) {
-  return entry.customText || entry.designKey === './stickers/v-diecut-neighborhood.webp' ? 2 : 1;
+  const base = entry.customText || entry.designKey === './stickers/v-diecut-neighborhood.webp' ? 2 : 1;
+  const textDesign = entry.customText || /v-diecut-rent-day|v-diecut-neighborhood/.test(entry.designKey);
+  return base * (textDesign ? 1.35 : 1);
 }
 function randomSliderValue(input) {
   const minimum = Number(input.min), step = Number(input.step) || 1;
