@@ -181,7 +181,7 @@ function moveDraggedSticker() {
   const candidate = hit.add(drag.offset);
   const edge = boundaryAt(drag.frame, candidate);
   const image = drag.entry.texture.image;
-  const width = drag.frame.width * drag.entry.size / 100 * stickerScale(drag.entry);
+  const width = drag.frame.width * .28 * drag.entry.size / 100 * stickerScale(drag.entry);
   const limit = Math.min(width, width * image.height / image.width) * 0.25;
   if (edge.distance > limit) candidate.addScaledVector(edge.outward, limit - edge.distance);
   drag.entry.point.copy(target.worldToLocal(candidate));
@@ -566,7 +566,7 @@ function rebuild(entry) {
   const angle = entry.finish === 'spray' ? 0 : THREE.MathUtils.degToRad(entry.rotation);
   const right = frame.right.clone().multiplyScalar(Math.cos(angle)).addScaledVector(frame.up, Math.sin(angle));
   const up = frame.up.clone().multiplyScalar(Math.cos(angle)).addScaledVector(frame.right, -Math.sin(angle));
-  const width = frame.width * entry.size / 100 * stickerScale(entry);
+  const width = frame.width * .28 * entry.size / 100 * stickerScale(entry);
   if (entry.finish === 'spray') worldPoint.addScaledVector(frame.up, -width * (entry.texture.userData.paintAnchorOffset || 0));
   const image = entry.texture.image;
   const height = width * image.height / image.width;
