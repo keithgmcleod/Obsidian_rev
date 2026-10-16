@@ -31,6 +31,10 @@ jobs:
         run: |
           cat blue-model-parts/part.* > bilt-blue-2k.glb
           rm -rf blue-model-parts
+      - name: Reassemble BILT Palladium model
+        run: |
+          cat palladium-model-parts/part.* > palladium-2k.glb
+          rm -rf palladium-model-parts
       - name: Set up Python
         uses: actions/setup-python@v6
         with:

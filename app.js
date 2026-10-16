@@ -29,9 +29,10 @@ const cards = {
   palladium: {
     name: "BILT Palladium",
     title: "BILT PALLADIUM",
-    intro: "The BILT Palladium model will appear here once its GLB is added.",
-    details: "The BILT Palladium model slot is ready for its 3D file.",
-    source: null,
+    intro: "A polished expression of precision and light.",
+    details: "Explore the BILT Palladium card as a high-detail 3D model, baked for the web.",
+    source: "./palladium-2k.glb?v=palladium-bake-4k-textures-2k",
+    specs: { format: "GLB 2.0", parts: "6 objects", geometry: "3,806,812 triangles", download: "12.5 MB" },
   },
 };
 
