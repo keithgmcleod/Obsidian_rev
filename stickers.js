@@ -514,20 +514,30 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0) {
     const grain = random();
     // Fine pigment variation inside the text and sparse droplets in the spray cloud.
     const pixel = (i - 3) / 4, x = pixel % w, y = Math.floor(pixel / w);
-    const mottling = .9 + .07 * Math.sin(x * .073 + Math.sin(y * .09) * 2) + .03 * Math.sin(y * .13 + x * .037);
+    const mottling = .75 + .17 * Math.sin(x * .073 + Math.sin(y * .09) * 2) + .08 * Math.sin(y * .13 + x * .037);
     if (data[i] > 150) {
-      data[i] = Math.round(data[i] * (grain < .025 ? .25 : (.86 + grain * .14) * mottling));
+      data[i] = Math.round(data[i] * (grain < .12 ? .1 : (.65 + grain * .35) * mottling));
       const tone = .85 + random() * .15;
       data[i - 3] *= tone; data[i - 2] *= tone; data[i - 1] *= tone;
-    } else data[i] = Math.min(255, Math.round(data[i] * (grain > .66 ? 2.3 : .3)));
+    } else data[i] = Math.min(255, Math.round(data[i] * (grain > .72 ? 1.7 : .18)));
+    data[i] = Math.round(data[i] * .58);
   }
   context.putImageData(image, 0, 0);
-  context.fillStyle = colour; context.globalAlpha = .45;
+  // Uneven gaps break up the coat into islands of pigment.
+  context.globalCompositeOperation = 'destination-out'; context.globalAlpha = .55;
+  for (let gap = 0; gap < Math.floor(w * h / 260); gap++) {
+    const x = Math.floor(random() * w), y = Math.floor(random() * h);
+    if (data[(y * w + x) * 4 + 3] < 20) continue;
+    context.beginPath(); context.ellipse(x, y, .8 + random() * 3, .7 + random() * 2, random() * Math.PI, 0, Math.PI * 2); context.fill();
+  }
+  context.globalCompositeOperation = 'source-over';
+  context.fillStyle = colour; context.globalAlpha = .28;
   // Larger, individually visible droplets accumulate outside the painted edges.
-  for (let dot = 0; dot < Math.floor(w * h / 75); dot++) {
+  for (let dot = 0; dot < Math.floor(w * h / 35); dot++) {
     const x = Math.floor(random() * w), y = Math.floor(random() * h);
     if (data[(y * w + x) * 4 + 3] < 4 || data[(y * w + x) * 4 + 3] > 140) continue;
-    context.beginPath(); context.arc(x, y, .5 + random() * 1.4, 0, Math.PI * 2); context.fill();
+    context.globalAlpha = .12 + random() * .32;
+    context.beginPath(); context.ellipse(x, y, .6 + Math.pow(random(), 2) * 3.6, .6 + random() * 2.5, random() * Math.PI, 0, Math.PI * 2); context.fill();
   }
   const texture = new THREE.CanvasTexture(canvas);
   const revealPixels = revealContext.getImageData(0, 0, w, h);
