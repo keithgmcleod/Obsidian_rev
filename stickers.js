@@ -11,10 +11,10 @@ const assets = [
   ['v-diecut-rent-day', 'Rent day'],
   ['v-badge-have-a-good-rent-day', 'Have a good rent day'],
   ['v-diecut-neighborhood', 'Neighbourhood'],
-  ['v-shield-bilt-10x', 'Bilt 10x'],
+  [null, 'Custom graffiti'],
   ['v-hello-soho', 'Hello Soho'],
 ];
-const designs = assets.map(([slug, label]) => ({ url: `./stickers/${slug}.webp`, label }));
+const designs = assets.map(([slug, label]) => ({ url: slug ? `./stickers/${slug}.webp` : null, label, custom: !slug }));
 const loader = new THREE.TextureLoader();
 const textureCache = new Map();
 const cards = new Map();
@@ -371,9 +371,54 @@ const cardKey = () => viewer.getAttribute('src');
 const entries = () => cards.get(cardKey()) || [];
 function message(text) { status.textContent = text; }
 function render() { scene?.queueRender(); }
+const graffitiEditor = document.querySelector('#graffiti-editor');
+const graffitiInput = document.querySelector('#graffiti-text');
+const graffitiCanvas = document.querySelector('#graffiti-preview');
+const customDesign = designs.find(design => design.custom);
+let fontPromise, draftRevision = 0;
+async function updateGraffiti() {
+  const revision = ++draftRevision;
+  customDesign.url = null;
+  const text = graffitiInput.value.trim();
+  const context = graffitiCanvas.getContext('2d');
+  context.clearRect(0, 0, graffitiCanvas.width, graffitiCanvas.height);
+  if (!text) { if (activeDesign === customDesign) message('Type some text to create your graffiti sticker.'); return; }
+  try {
+    fontPromise ||= new FontFace('Sticker Knerd', 'url("./fonts/knerd-fill.otf")').load().then(font => { document.fonts.add(font); return font; });
+    await fontPromise;
+    if (revision !== draftRevision) return;
+    // Include the actual bubble glyph bounds and both vinyl outlines in the canvas.
+    const size = 180, border = 46;
+    context.font = `${size}px "Sticker Knerd"`;
+    const metrics = context.measureText(text);
+    const left = Math.max(0, metrics.actualBoundingBoxLeft), right = Math.max(metrics.width, metrics.actualBoundingBoxRight);
+    const ascent = metrics.actualBoundingBoxAscent, descent = metrics.actualBoundingBoxDescent;
+    const scale = Math.min(1, 1800 / (left + right + border * 2));
+    graffitiCanvas.width = Math.ceil((left + right + border * 2) * scale);
+    graffitiCanvas.height = Math.ceil((ascent + descent + border * 2) * scale);
+    context.scale(scale, scale); context.font = `${size}px "Sticker Knerd"`;
+    context.lineJoin = 'round'; context.miterLimit = 2;
+    const x = border + left, y = border + ascent;
+    context.strokeStyle = '#fffdf7'; context.lineWidth = 49; context.strokeText(text, x, y);
+    context.strokeStyle = '#151515'; context.lineWidth = 25; context.strokeText(text, x, y);
+    const gold = context.createLinearGradient(0, border, 0, border + ascent + descent);
+    gold.addColorStop(0, '#E8CB94'); gold.addColorStop(1, '#876313');
+    context.fillStyle = gold; context.fillText(text, x, y);
+    customDesign.url = graffitiCanvas.toDataURL('image/png'); customDesign.text = text;
+    picker.querySelector('.graffiti-choice').replaceChildren(Object.assign(document.createElement('img'), { src: customDesign.url, alt: '' }));
+    if (activeDesign === customDesign) message('Your graffiti is ready. Click the card to place a copy.');
+  } catch (error) {
+    fontPromise = null;
+    if (activeDesign === customDesign) message('The graffiti font could not load. Select Custom graffiti to retry.');
+    console.error(error);
+  }
+}
+graffitiInput.addEventListener('input', updateGraffiti);
 function setDesign(design) {
   selectedEntry = null;
   activeDesign = design;
+  graffitiEditor.hidden = !design?.custom;
+  if (design?.custom) updateGraffiti();
   viewer.classList.toggle('placing-sticker', !!design);
   picker.querySelectorAll('button').forEach((button, i) => button.setAttribute('aria-pressed', String(designs[i] === design)));
   message(design ? `${design.label} selected. Click the card surface to place it.` : 'Move your pointer to tilt the card.');
@@ -382,8 +427,8 @@ function addButton(design) {
   const button = document.createElement('button');
   button.type = 'button'; button.title = design.label;
   button.setAttribute('aria-label', design.label); button.setAttribute('aria-pressed', 'false');
-  const image = document.createElement('img'); image.src = design.url; image.alt = '';
-  button.append(image);
+  if (design.custom) { button.classList.add('graffiti-choice'); button.textContent = 'Your text'; }
+  else { const image = document.createElement('img'); image.src = design.url; image.alt = ''; button.append(image); }
   button.addEventListener('click', () => setDesign(design)); picker.append(button);
 }
 designs.forEach(addButton);
@@ -474,6 +519,7 @@ function rebuild(entry) {
   entry.decal.userData.folds = entry.folds ?? 35;
   entry.decal.userData.foldSeed = entry.seed;
   entry.decal.userData.stickerId = entry.id;
+  entry.decal.userData.customText = entry.customText;
   entry.decal.userData.wrappedVertices = wrappedVertices;
   entry.decal.userData.edgeWrap = true;
   target.add(entry.decal); render();
@@ -481,15 +527,16 @@ function rebuild(entry) {
 async function place(event) {
   if (performance.now() < suppressClickUntil) return;
   if (!ready || !activeDesign) return;
+  if (!activeDesign.url) { message('Type your graffiti text and wait for the preview before placing it.'); return; }
   const rect = viewer.getBoundingClientRect();
   const ray = new THREE.Raycaster(); model.updateWorldMatrix(true, true);
   ray.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2), scene.camera);
   const hit = ray.intersectObjects(meshes, false).find(result => result.face);
   if (!hit) { message('Click directly on the card to attach a sticker.'); return; }
-  const stamp = generation, key = cardKey(), design = activeDesign;
+  const stamp = generation, key = cardKey(), design = { ...activeDesign };
   const entry = { meshIndex: meshes.indexOf(hit.object), point: hit.object.worldToLocal(hit.point.clone()),
     normal: hit.face.normal.clone(), size: Number(sizeInput.value), rotation: Number(rotationInput.value), folds: Number(foldsInput.value),
-    id: ++stickerSequence, seed: freshFoldSeed(design.url), designKey: design.url, decal: null };
+    id: ++stickerSequence, seed: freshFoldSeed(design.url), designKey: design.url, customText: design.custom ? design.text : null, decal: null };
   message('Attaching sticker…');
   try {
     entry.texture = await textureFor(design);

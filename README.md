@@ -19,3 +19,5 @@ Serve this folder over HTTP, then open the local address in a browser. For examp
 ## GitHub Pages
 
 The included workflow deploys the site to GitHub Pages whenever code is pushed to `main`, and supports manual runs from Actions. It reassembles the uploaded GLB parts into the model file before publishing. Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions** if it is not selected already.
+
+Custom graffiti replaces Bilt 10x in the sticker picker. Enter up to 28 characters; the preview uses the bundled Knerd Fill font and gold bubble lettering. Click the card to place independent copies. Text is rendered locally in the browser. Each copy retains its own text, folds and edge wrapping.

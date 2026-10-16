@@ -7,7 +7,7 @@
     <meta name="description" content="Explore BILT Blue, BILT Obsidian, and BILT Palladium in an interactive 3D card viewer." />
     <title>BILT CARDS — Interactive 3D collection</title>
     <link rel="preconnect" href="https://ajax.googleapis.com" />
-    <link rel="stylesheet" href="./styles.css?v=surface-stickers-1" />
+    <link rel="stylesheet" href="./styles.css?v=custom-graffiti-1" />
     <script async src="https://ga.jspm.io/npm:es-module-shims@2.6.2/dist/es-module-shims.js"></script>
     <script type="importmap">
       {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.module.min.js"}}
@@ -15,7 +15,7 @@
     <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.4.0/dist/model-viewer-module.min.js"></script>
     <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer-effects@1.5.0/dist/model-viewer-effects.min.js"></script>
     <script src="./app.js?v=surface-stickers-1" defer></script>
-    <script type="module" src="./stickers.js?v=organic-folds-1"></script>
+    <script type="module" src="./stickers.js?v=custom-graffiti-1"></script>
   </head>
   <body>
     <header class="topbar">
@@ -41,6 +41,12 @@
             <h2 id="sticker-heading">Make it yours.</h2>
             <p>Pick a sticker, then click the card. Drag past an edge to wrap it around. Choose Done placing, then click a blank part of the card to flip it.</p>
             <div class="sticker-picker" aria-label="Choose a sticker"></div>
+            <div id="graffiti-editor" hidden>
+              <label for="graffiti-text">Your graffiti text</label>
+              <input id="graffiti-text" type="text" value="YOUR TEXT" maxlength="28" autocomplete="off" spellcheck="false" aria-describedby="graffiti-help" />
+              <canvas id="graffiti-preview" aria-label="Custom graffiti sticker preview" role="img"></canvas>
+              <p id="graffiti-help">Up to 28 characters. Click the card to place a copy. Changing the text creates a new design.</p>
+            </div>
             <label class="sticker-upload">Import your own sticker
               <input id="sticker-file" type="file" accept="image/png,image/webp,image/jpeg" />
             </label>

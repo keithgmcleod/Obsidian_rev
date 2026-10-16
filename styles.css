@@ -183,3 +183,11 @@ model-viewer.placing-sticker { cursor: crosshair; }
 model-viewer { touch-action: none; }
 model-viewer.over-sticker { cursor: grab; }
 model-viewer.dragging-sticker { cursor: grabbing; }
+
+#graffiti-editor { margin: 12px 0; padding: 12px; border: 1px solid #b4a88a; border-radius: 10px; }
+#graffiti-editor[hidden] { display: none; }
+#graffiti-editor label { display: block; font-size: 12px; margin-bottom: 8px; }
+#graffiti-text { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; border: 1px solid #b4a88a; border-radius: 5px; background: #fffdf7; color: #171717; font: inherit; }
+#graffiti-preview { display: block; width: 100%; height: 100px; object-fit: contain; margin-top: 10px; }
+#graffiti-help { font-size: 11px; line-height: 1.5; margin-bottom: 0; }
+.sticker-picker .graffiti-choice { font-weight: 900; font-size: 15px; }
