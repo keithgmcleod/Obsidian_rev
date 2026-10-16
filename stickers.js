@@ -1,0 +1,447 @@
+import * as THREE from 'three';
+
+const viewer = document.querySelector('#obsidian-model');
+const status = document.querySelector('#sticker-status');
+const picker = document.querySelector('.sticker-picker');
+const sizeInput = document.querySelector('#sticker-size');
+const rotationInput = document.querySelector('#sticker-rotation');
+const foldsInput = document.querySelector('#sticker-folds');
+const assets = [
+  ['v-ring-seal-bilt-neighborhood', 'Bilt neighborhood'],
+  ['v-diecut-rent-day', 'Rent day'],
+  ['v-badge-have-a-good-rent-day', 'Have a good rent day'],
+  ['v-diecut-neighborhood', 'Neighbourhood'],
+  ['v-shield-bilt-10x', 'Bilt 10x'],
+  ['v-hello-soho', 'Hello Soho'],
+];
+const designs = assets.map(([slug, label]) => ({ url: `./stickers/${slug}.webp`, label }));
+const loader = new THREE.TextureLoader();
+const textureCache = new Map();
+const cards = new Map();
+let scene, model, meshes = [], activeDesign = null, ready = false, generation = 0;
+let surfaceRenderer;
+let selectedEntry = null, drag = null, dragFrame = 0, suppressClickUntil = 0;
+let cardAvailable = !viewer.hidden;
+const alphaMasks = new WeakMap();
+
+function pointerRay(event) {
+  model.updateWorldMatrix(true, true);
+  const rect = viewer.getBoundingClientRect(), ray = new THREE.Raycaster();
+  ray.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1,
+    1 - (event.clientY - rect.top) / rect.height * 2), scene.camera);
+  return ray;
+}
+function pickSticker(ray) {
+  const hits = ray.intersectObjects(entries().map(entry => entry.decal).filter(Boolean), false);
+  const surfaceHit = hits.length ? ray.intersectObjects(meshes, false)[0] : null;
+  for (const hit of hits) {
+    if (surfaceHit && hit.distance > surfaceHit.distance + 0.0001) continue;
+    const texture = hit.object.material.map;
+    if (!alphaMasks.has(texture)) {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(texture.image, 0, 0, 256, 256);
+      alphaMasks.set(texture, context.getImageData(0, 0, 256, 256).data);
+    }
+    const x = THREE.MathUtils.clamp(Math.floor(hit.uv.x * 256), 0, 255);
+    const y = THREE.MathUtils.clamp(Math.floor((1 - hit.uv.y) * 256), 0, 255);
+    if (alphaMasks.get(texture)[(y * 256 + x) * 4 + 3] > 12) {
+      return entries().find(entry => entry.decal === hit.object);
+    }
+  }
+  return null;
+}
+function selectSticker(entry) {
+  selectedEntry = entry;
+  sizeInput.value = entry.size; rotationInput.value = entry.rotation; foldsInput.value = entry.folds ?? 35;
+  message('Sticker selected. Drag to move it, or adjust size, rotation and folds.');
+}
+function moveDraggedSticker() {
+  dragFrame = 0;
+  if (!drag || !ready) return;
+  const hit = pointerRay(drag.pointer).ray.intersectPlane(drag.plane, new THREE.Vector3());
+  if (!hit) return;
+  const target = meshes[drag.entry.meshIndex];
+  const candidate = hit.add(drag.offset);
+  const edge = boundaryAt(drag.frame, candidate);
+  const image = drag.entry.texture.image;
+  const width = drag.frame.width * drag.entry.size / 100;
+  const limit = Math.min(width, width * image.height / image.width) * 0.25;
+  if (edge.distance > limit) candidate.addScaledVector(edge.outward, limit - edge.distance);
+  drag.entry.point.copy(target.worldToLocal(candidate));
+  rebuild(drag.entry);
+}
+function finishDrag(event) {
+  if (!drag || (event?.pointerId != null && drag.id !== event.pointerId)) return;
+  if (event?.type === 'pointerup') {
+    drag.pointer = { clientX: event.clientX, clientY: event.clientY };
+    if (dragFrame) cancelAnimationFrame(dragFrame);
+    moveDraggedSticker();
+  } else if (dragFrame) cancelAnimationFrame(dragFrame);
+  dragFrame = 0;
+  const id = drag.id; drag = null; suppressClickUntil = performance.now() + 500;
+  viewer.classList.remove('dragging-sticker');
+  if (viewer.hasPointerCapture(id)) viewer.releasePointerCapture(id);
+  message('Sticker selected. Drag to move it, or adjust size, rotation and folds.');
+}
+viewer.addEventListener('pointerdown', event => {
+  if (!ready || event.button !== 0 || !event.isPrimary) return;
+  const ray = pointerRay(event), entry = pickSticker(ray);
+  if (!entry) { selectedEntry = null; suppressClickUntil = 0; return; }
+  selectSticker(entry);
+  const target = meshes[entry.meshIndex];
+  const center = target.localToWorld(entry.point.clone());
+  const reference = entry.normal.clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(target.matrixWorld));
+  const frame = cardFrame(reference);
+  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(frame.normal, center);
+  const hit = ray.ray.intersectPlane(plane, new THREE.Vector3());
+  if (!hit) return;
+  drag = { id: event.pointerId, entry, frame, plane, offset: center.sub(hit), pointer: { clientX: event.clientX, clientY: event.clientY } };
+  viewer.classList.add('dragging-sticker'); viewer.setPointerCapture(event.pointerId);
+  event.preventDefault();
+});
+viewer.addEventListener('pointermove', event => {
+  if (!ready) return;
+  if (drag) {
+    if (event.pointerId !== drag.id) return;
+    drag.pointer = { clientX: event.clientX, clientY: event.clientY };
+    if (!dragFrame) dragFrame = requestAnimationFrame(moveDraggedSticker);
+    event.preventDefault();
+  } else viewer.classList.toggle('over-sticker', !!pickSticker(pointerRay(event)));
+});
+viewer.addEventListener('pointerup', finishDrag);
+viewer.addEventListener('pointercancel', finishDrag);
+viewer.addEventListener('lostpointercapture', finishDrag);
+window.addEventListener('blur', () => finishDrag());
+viewer.addEventListener('pointerleave', () => viewer.classList.remove('over-sticker'));
+
+function cardFrame(referenceNormal) {
+  let body, area = 0, dimensions;
+  for (const mesh of meshes) {
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    const size = mesh.geometry.boundingBox.getSize(new THREE.Vector3()).multiply(mesh.getWorldScale(new THREE.Vector3()));
+    const axes = ['x', 'y', 'z'].sort((a, b) => size[b] - size[a]);
+    const candidate = size[axes[0]] * size[axes[1]];
+    if (candidate > area) { area = candidate; body = mesh; dimensions = { size, axes }; }
+  }
+  const axis = name => new THREE.Vector3().setComponent(['x', 'y', 'z'].indexOf(name), 1);
+  const normal = axis(dimensions.axes[2]).applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(body.matrixWorld)).normalize();
+  if (normal.dot(referenceNormal) < 0) normal.negate();
+  const right = axis(dimensions.axes[0]).transformDirection(body.matrixWorld);
+  const up = normal.clone().cross(right).normalize();
+  const center = body.localToWorld(body.geometry.boundingBox.getCenter(new THREE.Vector3()));
+  const min = new THREE.Vector3(Infinity, Infinity, Infinity), max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  const corner = new THREE.Vector3(), relative = new THREE.Vector3();
+  for (const mesh of meshes) {
+    const box = mesh.geometry.boundingBox;
+    const size = box.getSize(new THREE.Vector3()).multiply(mesh.getWorldScale(new THREE.Vector3()));
+    const sorted = [size.x, size.y, size.z].sort((a, b) => b - a);
+    if (sorted[0] * sorted[1] < area * 0.8) continue;
+    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+      relative.copy(corner.set(x, y, z).applyMatrix4(mesh.matrixWorld)).sub(center);
+      const p = new THREE.Vector3(relative.dot(right), relative.dot(up), relative.dot(normal));
+      min.min(p); max.max(p);
+    }
+  }
+  const offset = min.clone().add(max).multiplyScalar(0.5);
+  center.addScaledVector(right, offset.x).addScaledVector(up, offset.y).addScaledVector(normal, offset.z);
+  const width = max.x - min.x, height = max.y - min.y, thickness = max.z - min.z;
+  return { normal, right, up, center, width, height, front: thickness / 2, back: -thickness / 2, radius: height * 0.045 };
+}
+
+// Signed distance and nearest boundary of the card's rounded rectangle. Its
+// outward direction also defines the cross-section used to turn onto the back.
+function boundaryAt(frame, point, result = { outward: new THREE.Vector3() }) {
+  const dx = point.x - frame.center.x, dy = point.y - frame.center.y, dz = point.z - frame.center.z;
+  const x = dx * frame.right.x + dy * frame.right.y + dz * frame.right.z;
+  const y = dx * frame.up.x + dy * frame.up.y + dz * frame.up.z;
+  const qx = Math.abs(x) - (frame.width / 2 - frame.radius);
+  const qy = Math.abs(y) - (frame.height / 2 - frame.radius);
+  const ax = Math.max(qx, 0), ay = Math.max(qy, 0), length = Math.hypot(ax, ay);
+  const distance = length + Math.min(Math.max(qx, qy), 0) - frame.radius;
+  let nx, ny;
+  if (length > 0) { nx = Math.sign(x) * ax / length; ny = Math.sign(y) * ay / length; }
+  else { nx = qx > qy ? Math.sign(x) : 0; ny = qx > qy ? 0 : Math.sign(y); }
+  result.x = x; result.y = y; result.distance = distance; result.nx = nx; result.ny = ny;
+  result.outward.copy(frame.right).multiplyScalar(nx).addScaledVector(frame.up, ny);
+  return result;
+}
+
+// Render the complete card into an orthographic height field. This includes
+// separate chip/logo meshes and prior stickers; sampling a single hit mesh
+// would let those raised details punch through the new sheet.
+function captureSurface(center, normal, up, width, height, cardWidth) {
+  surfaceRenderer ||= new THREE.WebGLRenderer({ alpha: true, antialias: false });
+  const resolution = 128, range = cardWidth * 0.2;
+  const capture = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-width / 2, width / 2, height / 2, -height / 2, range * 0.01, range * 2);
+  camera.position.copy(center).addScaledVector(normal, range);
+  camera.up.copy(up); camera.lookAt(center); camera.updateMatrixWorld();
+  const materials = [];
+  model.traverse(object => {
+    if (!object.isMesh || !object.visible) return;
+    const material = new THREE.ShaderMaterial({
+      side: THREE.DoubleSide,
+      uniforms: { mask: { value: object.userData.cardSticker ? object.material.map : null }, masked: { value: !!object.userData.cardSticker } },
+      vertexShader: 'varying vec2 vUv; void main(){vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+      fragmentShader: `uniform sampler2D mask; uniform bool masked; varying vec2 vUv;
+        void main(){
+          if(masked && texture2D(mask,vUv).a < 0.04) discard;
+          vec3 packed=fract(gl_FragCoord.z*vec3(1.0,255.0,65025.0));
+          packed-=packed.yzz*vec3(1.0/255.0,1.0/255.0,0.0);
+          gl_FragColor=vec4(packed,1.0);
+        }`,
+    });
+    materials.push(material);
+    const copy = new THREE.Mesh(object.geometry, material);
+    copy.matrixAutoUpdate = false; copy.matrix.copy(object.matrixWorld); capture.add(copy);
+  });
+  const target = new THREE.WebGLRenderTarget(resolution, resolution, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  const pixels = new Uint8Array(resolution * resolution * 4);
+  try {
+    surfaceRenderer.setRenderTarget(target); surfaceRenderer.setClearColor(0, 0);
+    surfaceRenderer.clear(); surfaceRenderer.render(capture, camera);
+    surfaceRenderer.readRenderTargetPixels(target, 0, 0, resolution, resolution, pixels);
+  } finally {
+    surfaceRenderer.setRenderTarget(null); target.dispose(); materials.forEach(material => material.dispose());
+  }
+  const elevations = new Float32Array(resolution * resolution);
+  for (let i = 0; i < elevations.length; i++) {
+    const offset = i * 4;
+    const depth = pixels[offset] / 255 + pixels[offset + 1] / 65025 + pixels[offset + 2] / 16581375;
+    elevations[i] = pixels[offset + 3] ? range - (camera.near + depth * (camera.far - camera.near)) : 0;
+  }
+  // Conservative dilation bridges tiny gaps, bevels and sampling boundaries.
+  // A soft envelope lets vinyl bend over relief instead of copying every edge.
+  const sample = (u, v) => {
+    const cx = Math.round(u * (resolution - 1)), cy = Math.round(v * (resolution - 1));
+    let elevation = -Infinity;
+    for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) {
+      const ix = THREE.MathUtils.clamp(cx + x, 0, resolution - 1);
+      const iy = THREE.MathUtils.clamp(cy + y, 0, resolution - 1);
+      const distance = Math.hypot(x * width, y * height) / resolution;
+      elevation = Math.max(elevation, elevations[iy * resolution + ix] - distance * 0.07);
+    }
+    return elevation;
+  };
+  return sample;
+}
+
+// Geometry attachment bridge for this site's pinned model-viewer 4.4.0. Keep isolated:
+// the public materials API cannot add decal meshes. Fail visibly on API changes.
+function getScene() {
+  const symbol = Object.getOwnPropertySymbols(viewer).find(key => key.description === 'scene');
+  const result = symbol && viewer[symbol];
+  if (!result?.model || !result?.camera || typeof result.queueRender !== 'function') {
+    throw new Error('Sticker attachment is unavailable with this viewer version.');
+  }
+  return result;
+}
+function guardUnpresentedARScene() {
+  // model-viewer 4.4 calls its AR scene updater on ordinary orientation edits,
+  // even before an AR scene exists. Keep normal card flips from dereferencing
+  // that null scene, without changing the path for an active AR presentation.
+  let owner = viewer, rendererSymbol;
+  while (owner && !rendererSymbol) {
+    rendererSymbol = Object.getOwnPropertySymbols(owner).find(key => key.description === 'renderer');
+    owner = Object.getPrototypeOf(owner);
+  }
+  const ar = rendererSymbol && viewer[rendererSymbol]?.arRenderer;
+  if (!ar || ar.stickerSceneGuard) return;
+  const update = ar.onUpdateScene;
+  ar.onUpdateScene = (...args) => {
+    if (ar.presentedScene) return update.apply(ar, args);
+  };
+  ar.stickerSceneGuard = true;
+}
+const cardKey = () => viewer.getAttribute('src');
+const entries = () => cards.get(cardKey()) || [];
+function message(text) { status.textContent = text; }
+function render() { scene?.queueRender(); }
+function setDesign(design) {
+  selectedEntry = null;
+  activeDesign = design;
+  viewer.classList.toggle('placing-sticker', !!design);
+  picker.querySelectorAll('button').forEach((button, i) => button.setAttribute('aria-pressed', String(designs[i] === design)));
+  message(design ? `${design.label} selected. Click the card surface to place it.` : 'Move your pointer to tilt the card.');
+}
+function addButton(design) {
+  const button = document.createElement('button');
+  button.type = 'button'; button.title = design.label;
+  button.setAttribute('aria-label', design.label); button.setAttribute('aria-pressed', 'false');
+  const image = document.createElement('img'); image.src = design.url; image.alt = '';
+  button.append(image);
+  button.addEventListener('click', () => setDesign(design)); picker.append(button);
+}
+designs.forEach(addButton);
+function textureFor(design) {
+  if (!textureCache.has(design.url)) {
+    textureCache.set(design.url, loader.loadAsync(design.url).then(texture => {
+      texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 8; return texture;
+    }).catch(error => { textureCache.delete(design.url); throw error; }));
+  }
+  return textureCache.get(design.url);
+}
+function disposeDecal(entry) {
+  entry.decal?.removeFromParent(); entry.decal?.geometry.dispose();
+  entry.decal?.material.dispose(); entry.decal = null;
+}
+function rebuild(entry) {
+  disposeDecal(entry);
+  const target = meshes[entry.meshIndex];
+  if (!target) return;
+  model.updateWorldMatrix(true, true);
+  const worldPoint = target.localToWorld(entry.point.clone());
+  const referenceNormal = entry.normal.clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(target.matrixWorld)).normalize();
+  const frame = cardFrame(referenceNormal);
+  const worldNormal = frame.normal;
+  const angle = THREE.MathUtils.degToRad(entry.rotation);
+  const right = frame.right.clone().multiplyScalar(Math.cos(angle)).addScaledVector(frame.up, Math.sin(angle));
+  const up = frame.up.clone().multiplyScalar(Math.cos(angle)).addScaledVector(frame.right, -Math.sin(angle));
+  const width = frame.width * entry.size / 100;
+  const image = entry.texture.image;
+  const height = width * image.height / image.width;
+  const surface = captureSurface(worldPoint, worldNormal, up, width, height, frame.width);
+  const geometry = new THREE.PlaneGeometry(width, height, 128, 128);
+  const positions = geometry.attributes.position;
+  const uvs = geometry.attributes.uv;
+  const foldAmount = (entry.folds ?? 35) / 100;
+  const clearance = frame.width * 0.0009;
+  const lift = width * 0.026 * foldAmount;
+  const point = new THREE.Vector3();
+  const flat = new THREE.Vector3();
+  const edgeState = { outward: new THREE.Vector3() };
+  const anchorDepth = worldPoint.clone().sub(frame.center).dot(worldNormal);
+  const bendRadius = frame.front + clearance;
+  let backSurface = null, wrappedVertices = 0;
+  for (let i = 0; i < positions.count; i++) {
+    const u = uvs.getX(i), v = uvs.getY(i);
+    const x = (u - 0.5) * width, y = (v - 0.5) * height;
+    const diagonal = (u - 0.5) + 0.55 * (v - 0.5) - 0.06;
+    const crease = Math.exp(-Math.pow(diagonal / 0.035, 2)) * Math.pow(Math.sin(Math.PI * v), 2);
+    const secondary = Math.exp(-Math.pow(((v - 0.5) - 0.32 * (u - 0.5) + 0.15) / 0.026, 2)) * Math.pow(Math.sin(Math.PI * u), 2) * 0.45;
+    const corner = Math.pow(Math.max(0, (u + v - 1.35) / 0.65), 2) * 1.6;
+    const ripple = Math.pow(Math.sin((u * 2.7 + v * 1.3) * Math.PI), 2) * Math.pow(Math.abs(u - 0.5) * 2, 8) * 0.18;
+    const folds = lift * (crease + secondary + corner + ripple);
+    flat.copy(worldPoint).addScaledVector(right, x).addScaledVector(up, y);
+    const edge = boundaryAt(frame, flat, edgeState);
+    if (edge.distance <= 0) {
+      const faceHeight = anchorDepth + surface(u, v);
+      point.copy(frame.center).addScaledVector(frame.right, edge.x).addScaledVector(frame.up, edge.y)
+        .addScaledVector(worldNormal, Math.max(frame.front, faceHeight) + clearance + folds);
+    } else {
+      wrappedVertices++;
+      const angle = Math.min(Math.PI, edge.distance / bendRadius);
+      const remainder = Math.max(0, edge.distance - Math.PI * bendRadius);
+      const across = bendRadius * Math.sin(angle) - remainder;
+      const px = edge.x - edge.nx * edge.distance + edge.nx * across;
+      const py = edge.y - edge.ny * edge.distance + edge.ny * across;
+      let depth = bendRadius * Math.cos(angle);
+      if (angle === Math.PI) {
+        backSurface ||= captureSurface(frame.center, worldNormal.clone().negate(), frame.up, frame.width, frame.height, frame.width);
+        depth = -Math.max(-frame.back, backSurface(0.5 - px / frame.width, 0.5 + py / frame.height)) - clearance;
+      }
+      point.copy(frame.center).addScaledVector(frame.right, px).addScaledVector(frame.up, py).addScaledVector(worldNormal, depth);
+      point.addScaledVector(edge.outward, Math.sin(angle) * folds).addScaledVector(worldNormal, Math.cos(angle) * folds);
+    }
+    positions.setXYZ(i, point.x, point.y, point.z);
+  }
+  geometry.applyMatrix4(target.matrixWorld.clone().invert());
+  geometry.computeVertexNormals(); geometry.computeBoundingSphere();
+  const material = new THREE.MeshPhysicalMaterial({ map: entry.texture, transparent: true,
+    side: THREE.DoubleSide, alphaTest: 0.025, roughness: 0.38, metalness: 0,
+    clearcoat: 0.28, clearcoatRoughness: 0.42, depthWrite: true,
+    polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  material.onBeforeCompile = shader => {
+    shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\nif (!gl_FrontFacing) diffuseColor.rgb = vec3(0.92);');
+  };
+  entry.decal = new THREE.Mesh(geometry, material); entry.decal.name = 'Card sticker';
+  entry.decal.renderOrder = 10 + entries().indexOf(entry); entry.decal.userData.cardSticker = true;
+  entry.decal.userData.noHit = true;
+  entry.decal.userData.folds = entry.folds ?? 35;
+  entry.decal.userData.wrappedVertices = wrappedVertices;
+  entry.decal.userData.edgeWrap = true;
+  target.add(entry.decal); render();
+}
+async function place(event) {
+  if (performance.now() < suppressClickUntil) return;
+  if (!ready || !activeDesign) return;
+  const rect = viewer.getBoundingClientRect();
+  const ray = new THREE.Raycaster(); model.updateWorldMatrix(true, true);
+  ray.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, 1 - (event.clientY - rect.top) / rect.height * 2), scene.camera);
+  const hit = ray.intersectObjects(meshes, false).find(result => result.face);
+  if (!hit) { message('Click directly on the card to attach a sticker.'); return; }
+  const stamp = generation, key = cardKey(), design = activeDesign;
+  const entry = { meshIndex: meshes.indexOf(hit.object), point: hit.object.worldToLocal(hit.point.clone()),
+    normal: hit.face.normal.clone(), size: Number(sizeInput.value), rotation: Number(rotationInput.value), folds: Number(foldsInput.value), decal: null };
+  message('Attaching sticker…');
+  try {
+    entry.texture = await textureFor(design);
+    if (generation !== stamp || cardKey() !== key) return;
+    if (!cards.has(key)) cards.set(key, []);
+    cards.get(key).push(entry); rebuild(entry); selectedEntry = entry;
+    message(`${design.label} attached. Adjust size, rotation or folds, or click to place another.`);
+  } catch (error) { console.error(error); message('Could not load this sticker. Try importing a PNG or WebP.'); }
+}
+viewer.addEventListener('click', event => {
+  if (activeDesign || drag || performance.now() < suppressClickUntil) event.preventDefault();
+}, true);
+viewer.addEventListener('click', place);
+function activateModel() {
+  if (!cardAvailable) return;
+  generation++; ready = false;
+  try {
+    guardUnpresentedARScene();
+    scene = getScene(); model = scene.model; meshes = [];
+    model.traverse(object => { if (object.isMesh && !object.userData.cardSticker) meshes.push(object); });
+    entries().forEach(disposeDecal);
+    entries().forEach(rebuild); ready = true;
+    message(activeDesign ? 'Click the card surface to attach your sticker.' : 'Pick a sticker, then click the card to attach it.');
+  } catch (error) { console.error(error); message(error.message); }
+}
+viewer.addEventListener('load', activateModel);
+viewer.addEventListener('card-selection', event => {
+  cardAvailable = event.detail.hasModel;
+  document.querySelector('.sticker-tools').hidden = !cardAvailable;
+  if (!cardAvailable) releaseSheets();
+  else if (!event.detail.sourceChanged && viewer.loaded) activateModel();
+});
+// Detach custom geometry before model-viewer caches/clones a glTF scene. Its
+// material API only knows the original glTF primitive associations.
+function releaseSheets() {
+  finishDrag(); selectedEntry = null;
+  ready = false; generation++;
+  for (const list of cards.values()) list.forEach(disposeDecal);
+}
+document.addEventListener('click', event => {
+  const option = event.target.closest('[data-card-variant], [data-card]');
+  if (option && !option.disabled && option.getAttribute('aria-pressed') !== 'true') releaseSheets();
+}, true);
+new MutationObserver(releaseSheets).observe(viewer, { attributes: true, attributeFilter: ['src'] });
+document.querySelector('#sticker-done').addEventListener('click', () => setDesign(null));
+document.querySelector('#sticker-undo').addEventListener('click', () => {
+  generation++; const entry = entries().pop(); if (entry) disposeDecal(entry);
+  if (selectedEntry === entry) selectedEntry = null;
+  render(); message(entry ? 'Last sticker removed.' : 'This card has no stickers yet.');
+});
+document.querySelector('#sticker-clear').addEventListener('click', () => {
+  selectedEntry = null;
+  generation++; entries().forEach(disposeDecal); cards.set(cardKey(), []); render(); message('Stickers cleared from this card.');
+});
+for (const input of [sizeInput, rotationInput, foldsInput]) input.addEventListener('input', () => {
+  if (!ready) return;
+  const entry = selectedEntry || entries().at(-1); if (!entry) return;
+  entry.size = Number(sizeInput.value); entry.rotation = Number(rotationInput.value); entry.folds = Number(foldsInput.value); rebuild(entry);
+});
+document.querySelector('#sticker-file').addEventListener('change', async event => {
+  const file = event.target.files[0]; if (!file) return;
+  if (!['image/png', 'image/webp', 'image/jpeg'].includes(file.type) || file.size > 20 * 1024 * 1024) {
+    message('Choose a PNG, WebP, or JPEG image under 20 MB.'); return;
+  }
+  const url = URL.createObjectURL(file), design = { url, label: file.name };
+  try { await textureFor(design); designs.push(design); addButton(design); setDesign(design); }
+  catch { URL.revokeObjectURL(url); message('This image could not be opened.'); }
+  event.target.value = '';
+});
+document.querySelector('.sticker-tools').hidden = !cardAvailable;
+if (viewer.loaded) activateModel();

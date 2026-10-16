@@ -163,3 +163,23 @@ h1 { font-size: clamp(40px, 5vw, 78px); margin-top: 28px; letter-spacing: -.085e
 @media (max-width: 420px) {
   .card-option { font-size: 9px; }
 }
+.sticker-tools { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); max-width: 390px; }
+.sticker-tools h2 { font-size: 25px; letter-spacing: -.04em; }
+.sticker-tools p { font-size: 12px; line-height: 1.6; }
+.sticker-picker { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.sticker-picker button { width: 66px; height: 66px; padding: 7px; border: 1px solid #555; border-radius: 8px; background: #181818; cursor: pointer; }
+.sticker-picker button[aria-pressed="true"] { border-color: #ddff8a; background: #303b20; }
+.sticker-picker img { width: 100%; height: 100%; object-fit: contain; }
+.sticker-upload { display: block; font-size: 12px; }
+.sticker-upload input { display: block; margin-top: 9px; max-width: 100%; font-size: 12px; }
+.sticker-adjustments { display: flex; gap: 18px; margin-top: 18px; }
+.sticker-adjustments label { flex: 1; min-width: 0; font-size: 12px; }
+.sticker-adjustments input { display: block; width: 100%; margin: 10px 0; accent-color: #ddff8a; }
+.sticker-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.sticker-actions button { padding: 9px 12px; color: #fff; background: #181818; border: 1px solid #555; border-radius: 5px; cursor: pointer; }
+.sticker-tools :focus-visible { outline: 2px solid #ddff8a; outline-offset: 3px; }
+#sticker-status { min-height: 38px; color: #ddff8a; }
+model-viewer.placing-sticker { cursor: crosshair; }
+model-viewer { touch-action: none; }
+model-viewer.over-sticker { cursor: grab; }
+model-viewer.dragging-sticker { cursor: grabbing; }

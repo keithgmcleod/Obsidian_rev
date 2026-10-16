@@ -49,6 +49,7 @@ let sideYaw = 0;
 let blueMetalnessAdjustedModel = null;
 
 function selectCard(cardId, updateAddress = true) {
+  const previousSource = viewer.getAttribute('src');
   const card = cards[cardId] ? cards[cardId] : cards.obsidian;
   selectedCard = cards[cardId] ? cardId : "obsidian";
   showingBack = false;
@@ -94,6 +95,9 @@ function selectCard(cardId, updateAddress = true) {
   resetCards();
   queueCardTilt();
   queueReflectionAlignment();
+  viewer.dispatchEvent(new CustomEvent('card-selection', {
+    detail: { hasModel: !!card.source, sourceChanged: previousSource !== card.source },
+  }));
   if (updateAddress) {
     const url = new URL(window.location.href);
     url.searchParams.set("card", selectedCard);
@@ -101,7 +105,8 @@ function selectCard(cardId, updateAddress = true) {
   }
 }
 
-function flipCard() {
+function flipCard(event) {
+  if (event?.defaultPrevented || viewer.classList.contains('placing-sticker') || viewer.classList.contains('dragging-sticker')) return;
   if (!cards[selectedCard]?.source) return;
   showingBack = !showingBack;
   setPhysicalCardPose();
@@ -129,6 +134,7 @@ function setPhysicalCardPose() {
 }
 
 function updateCardTilt() {
+  if (viewer.classList.contains('dragging-sticker')) { frame = 0; return; }
   currentPointer.x += (pointer.x - currentPointer.x) * 0.1;
   currentPointer.y += (pointer.y - currentPointer.y) * 0.1;
 
@@ -242,6 +248,7 @@ function queueReflectionAlignment() {
 }
 
 function moveWithPointer(event) {
+  if (viewer.classList.contains('placing-sticker') || viewer.classList.contains('dragging-sticker')) return;
   const bounds = stage.getBoundingClientRect();
   const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
     && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
