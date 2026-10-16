@@ -178,7 +178,7 @@ function moveDraggedSticker() {
   const candidate = hit.add(drag.offset);
   const edge = boundaryAt(drag.frame, candidate);
   const image = drag.entry.texture.image;
-  const width = drag.frame.width * drag.entry.size / 100 * (drag.entry.customText ? 2 : 1);
+  const width = drag.frame.width * drag.entry.size / 100 * stickerScale(drag.entry);
   const limit = Math.min(width, width * image.height / image.width) * 0.25;
   if (edge.distance > limit) candidate.addScaledVector(edge.outward, limit - edge.distance);
   drag.entry.point.copy(target.worldToLocal(candidate));
@@ -456,7 +456,7 @@ function rebuild(entry) {
   const angle = THREE.MathUtils.degToRad(entry.rotation);
   const right = frame.right.clone().multiplyScalar(Math.cos(angle)).addScaledVector(frame.up, Math.sin(angle));
   const up = frame.up.clone().multiplyScalar(Math.cos(angle)).addScaledVector(frame.right, -Math.sin(angle));
-  const width = frame.width * entry.size / 100 * (entry.customText ? 2 : 1);
+  const width = frame.width * entry.size / 100 * stickerScale(entry);
   const image = entry.texture.image;
   const height = width * image.height / image.width;
   const surface = captureSurface(worldPoint, worldNormal, up, width, height, frame.width);
@@ -546,6 +546,9 @@ async function place(event) {
     sizeInput.value = entry.size; rotationInput.value = entry.rotation; foldsInput.value = entry.folds;
     message(`${design.label} attached. Adjust size, rotation or folds, or click to place another.`);
   } catch (error) { console.error(error); message('Could not load this sticker. Try importing a PNG or WebP.'); }
+}
+function stickerScale(entry) {
+  return entry.customText || entry.designKey === './stickers/v-diecut-neighborhood.webp' ? 2 : 1;
 }
 function randomSliderValue(input) {
   const minimum = Number(input.min), step = Number(input.step) || 1;
