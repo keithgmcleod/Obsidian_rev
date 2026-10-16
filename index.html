@@ -7,7 +7,7 @@
     <meta name="description" content="Explore BILT Blue, BILT Obsidian, and BILT Palladium in an interactive 3D card viewer." />
     <title>BILT CARDS — Interactive 3D collection</title>
     <link rel="preconnect" href="https://ajax.googleapis.com" />
-    <link rel="stylesheet" href="./styles.css?v=custom-graffiti-1" />
+    <link rel="stylesheet" href="./styles.css?v=spray-outlines-1" />
     <script async src="https://ga.jspm.io/npm:es-module-shims@2.6.2/dist/es-module-shims.js"></script>
     <script type="importmap">
       {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.module.min.js"}}
@@ -15,7 +15,7 @@
     <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.4.0/dist/model-viewer-module.min.js"></script>
     <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer-effects@1.5.0/dist/model-viewer-effects.min.js"></script>
     <script src="./app.js?v=surface-stickers-1" defer></script>
-    <script type="module" src="./stickers.js?v=neighbourhood-2x"></script>
+    <script type="module" src="./stickers.js?v=spray-outlines-1"></script>
   </head>
   <body>
     <header class="topbar">
@@ -41,6 +41,11 @@
             <h2 id="sticker-heading">Make it yours.</h2>
             <p>Pick a sticker, then click the card. Drag past an edge to wrap it around. Choose Done placing, then click a blank part of the card to flip it.</p>
             <div class="sticker-picker" aria-label="Choose a sticker"></div>
+            <div class="paint-options">
+              <label>Apply as <select id="sticker-finish"><option value="sticker">Vinyl sticker</option><option value="spray">Spray-painted outline</option></select></label>
+              <label>Paint colour <input id="spray-colour" type="color" value="#e8ff9b" /></label>
+              <p>Choose a design, then click the card. Spray paint follows the surface without paper folds.</p>
+            </div>
             <div id="graffiti-editor" hidden>
               <label for="graffiti-text">Your graffiti text</label>
               <input id="graffiti-text" type="text" value="YOUR TEXT" maxlength="28" autocomplete="off" spellcheck="false" aria-describedby="graffiti-help" />

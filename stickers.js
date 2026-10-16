@@ -6,6 +6,8 @@ const picker = document.querySelector('.sticker-picker');
 const sizeInput = document.querySelector('#sticker-size');
 const rotationInput = document.querySelector('#sticker-rotation');
 const foldsInput = document.querySelector('#sticker-folds');
+const finishInput = document.querySelector('#sticker-finish');
+const paintColour = document.querySelector('#spray-colour');
 const assets = [
   ['v-ring-seal-bilt-neighborhood', 'Bilt neighborhood'],
   ['v-diecut-rent-day', 'Rent day'],
@@ -166,8 +168,9 @@ function pickSticker(ray) {
 }
 function selectSticker(entry) {
   selectedEntry = entry;
+  foldsInput.disabled = entry.finish === 'spray';
   sizeInput.value = entry.size; rotationInput.value = entry.rotation; foldsInput.value = entry.folds ?? 35;
-  message('Sticker selected. Drag to move it, or adjust size, rotation and folds.');
+  message(entry.finish === 'spray' ? 'Paint selected. Drag to move it, or adjust size and rotation.' : 'Sticker selected. Drag to move it, or adjust size, rotation and folds.');
 }
 function moveDraggedSticker() {
   dragFrame = 0;
@@ -417,6 +420,7 @@ graffitiInput.addEventListener('input', updateGraffiti);
 function setDesign(design) {
   selectedEntry = null;
   activeDesign = design;
+  foldsInput.disabled = finishInput.value === 'spray';
   graffitiEditor.hidden = !design?.custom;
   if (design?.custom) updateGraffiti();
   viewer.classList.toggle('placing-sticker', !!design);
@@ -439,6 +443,42 @@ function textureFor(design) {
     }).catch(error => { textureCache.delete(design.url); throw error; }));
   }
   return textureCache.get(design.url);
+}
+function sprayTexture(source, colour, seed) {
+  const canvas = document.createElement('canvas');
+  const scale = Math.min(1, 1024 / Math.max(source.image.width, source.image.height));
+  canvas.width = Math.max(16, Math.round(source.image.width * scale));
+  canvas.height = Math.max(16, Math.round(source.image.height * scale));
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(source.image, 0, 0, canvas.width, canvas.height);
+  const { width: w, height: h } = canvas;
+  const pixels = context.getImageData(0, 0, w, h).data;
+  const edges = new Float32Array(w * h);
+  const sample = (x, y) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return [0, 0];
+    const i = (y * w + x) * 4, alpha = pixels[i + 3] / 255;
+    return [alpha, (pixels[i] * .2126 + pixels[i + 1] * .7152 + pixels[i + 2] * .0722) / 255 * alpha];
+  };
+  // Trace both the die-cut silhouette and printed artwork for a readable stencil.
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const a = sample(x - 2, y), b = sample(x + 2, y), c = sample(x, y - 2), d = sample(x, y + 2);
+    edges[y * w + x] = Math.min(1, Math.max(Math.hypot(a[0] - b[0], c[0] - d[0]), Math.hypot(a[1] - b[1], c[1] - d[1])) * 1.7);
+  }
+  const output = context.createImageData(w, h), random = seededRandom(seed);
+  const rgb = colour.match(/[a-f\d]{2}/gi).map(value => parseInt(value, 16));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let nearby = edges[y * w + x], mist = 0;
+    for (const [dx, dy] of [[-4,0],[4,0],[0,-4],[0,4],[-3,-3],[3,3],[-3,3],[3,-3]]) {
+      if (x + dx >= 0 && x + dx < w && y + dy >= 0 && y + dy < h) mist += edges[(y + dy) * w + x + dx];
+    }
+    const grain = random(), alpha = Math.min(1, nearby * (.62 + grain * .38) + mist * .035 * (grain > .62 ? 1 : .15));
+    const i = (y * w + x) * 4;
+    output.data[i] = rgb[0]; output.data[i + 1] = rgb[1]; output.data[i + 2] = rgb[2]; output.data[i + 3] = Math.round(alpha * 255);
+  }
+  context.putImageData(output, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 8;
+  return texture;
 }
 function disposeDecal(entry) {
   entry.decal?.removeFromParent(); entry.decal?.geometry.dispose();
@@ -463,7 +503,7 @@ function rebuild(entry) {
   const geometry = new THREE.PlaneGeometry(width, height, 128, 128);
   const positions = geometry.attributes.position;
   const uvs = geometry.attributes.uv;
-  const foldAmount = (entry.folds ?? 35) / 100;
+  const foldAmount = entry.finish === 'spray' ? 0 : (entry.folds ?? 35) / 100;
   entry.seed ??= freshFoldSeed(entry.designKey || 'import');
   entry.organic ||= organicProfile(entry);
   const clearance = frame.width * 0.0009;
@@ -507,13 +547,14 @@ function rebuild(entry) {
   geometry.applyMatrix4(target.matrixWorld.clone().invert());
   geometry.computeVertexNormals(); geometry.computeBoundingSphere();
   const material = new THREE.MeshPhysicalMaterial({ map: entry.texture, transparent: true,
-    side: THREE.DoubleSide, alphaTest: 0.025, roughness: 0.38, metalness: 0,
-    clearcoat: 0.28, clearcoatRoughness: 0.42, depthWrite: true,
+    side: THREE.DoubleSide, alphaTest: 0.025, roughness: entry.finish === 'spray' ? .95 : .38, metalness: 0,
+    clearcoat: entry.finish === 'spray' ? 0 : .28, clearcoatRoughness: 0.42, depthWrite: true,
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  material.onBeforeCompile = shader => {
+  if (entry.finish !== 'spray') material.onBeforeCompile = shader => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\nif (!gl_FrontFacing) diffuseColor.rgb = vec3(0.92);');
   };
-  entry.decal = new THREE.Mesh(geometry, material); entry.decal.name = 'Card sticker';
+  entry.decal = new THREE.Mesh(geometry, material); entry.decal.name = entry.finish === 'spray' ? 'Spray-painted outline' : 'Card sticker';
+  entry.decal.userData.finish = entry.finish;
   entry.decal.renderOrder = 10 + entries().indexOf(entry); entry.decal.userData.cardSticker = true;
   entry.decal.userData.noHit = true;
   entry.decal.userData.folds = entry.folds ?? 35;
@@ -536,15 +577,21 @@ async function place(event) {
   const stamp = generation, key = cardKey(), design = { ...activeDesign };
   const entry = { meshIndex: meshes.indexOf(hit.object), point: hit.object.worldToLocal(hit.point.clone()),
     normal: hit.face.normal.clone(), size: randomSliderValue(sizeInput), rotation: randomSliderValue(rotationInput), folds: randomSliderValue(foldsInput),
-    id: ++stickerSequence, seed: freshFoldSeed(design.url), designKey: design.url, customText: design.custom ? design.text : null, decal: null };
+    id: ++stickerSequence, seed: freshFoldSeed(design.url), designKey: design.url, customText: design.custom ? design.text : null,
+    finish: finishInput.value, paintColour: paintColour.value, decal: null };
   message('Attaching sticker…');
   try {
     entry.texture = await textureFor(design);
     if (generation !== stamp || cardKey() !== key) return;
+    if (entry.finish === 'spray') {
+      entry.texture = sprayTexture(entry.texture, entry.paintColour, entry.seed);
+      entry.folds = 0;
+    }
     if (!cards.has(key)) cards.set(key, []);
     cards.get(key).push(entry); rebuild(entry); selectedEntry = entry;
+    foldsInput.disabled = entry.finish === 'spray';
     sizeInput.value = entry.size; rotationInput.value = entry.rotation; foldsInput.value = entry.folds;
-    message(`${design.label} attached. Adjust size, rotation or folds, or click to place another.`);
+    message(entry.finish === 'spray' ? `${design.label} sprayed onto the card. Adjust size or rotation, or place another.` : `${design.label} attached. Adjust size, rotation or folds, or click to place another.`);
   } catch (error) { console.error(error); message('Could not load this sticker. Try importing a PNG or WebP.'); }
 }
 function stickerScale(entry) {
@@ -595,23 +642,29 @@ document.querySelector('#sticker-new-folds').addEventListener('click', () => {
   if (!ready) return;
   const entry = selectedEntry || entries().at(-1);
   if (!entry) { message('Add or select a sticker to give it a new fold pattern.'); return; }
+  if (entry.finish === 'spray') { message('Spray paint follows the card surface and has no paper folds.'); return; }
   entry.seed = freshFoldSeed(entry.designKey || 'import'); entry.organic = null;
   rebuild(entry);
   message('New organic folds and curls applied to this sticker.');
 });
 document.querySelector('#sticker-undo').addEventListener('click', () => {
-  generation++; const entry = entries().pop(); if (entry) disposeDecal(entry);
+  generation++; const entry = entries().pop(); if (entry) { disposeDecal(entry); if (entry.finish === 'spray') entry.texture.dispose(); }
   if (selectedEntry === entry) selectedEntry = null;
   render(); message(entry ? 'Last sticker removed.' : 'This card has no stickers yet.');
 });
 document.querySelector('#sticker-clear').addEventListener('click', () => {
   selectedEntry = null;
-  generation++; entries().forEach(disposeDecal); cards.set(cardKey(), []); render(); message('Stickers cleared from this card.');
+  generation++; entries().forEach(entry => { disposeDecal(entry); if (entry.finish === 'spray') entry.texture.dispose(); }); cards.set(cardKey(), []); render(); message('Stickers cleared from this card.');
 });
 for (const input of [sizeInput, rotationInput, foldsInput]) input.addEventListener('input', () => {
   if (!ready) return;
   const entry = selectedEntry || entries().at(-1); if (!entry) return;
-  entry.size = Number(sizeInput.value); entry.rotation = Number(rotationInput.value); entry.folds = Number(foldsInput.value); rebuild(entry);
+  entry.size = Number(sizeInput.value); entry.rotation = Number(rotationInput.value); entry.folds = entry.finish === 'spray' ? 0 : Number(foldsInput.value); rebuild(entry);
+});
+finishInput.addEventListener('change', () => {
+  selectedEntry = null;
+  foldsInput.disabled = finishInput.value === 'spray';
+  message(finishInput.value === 'spray' ? 'Spray outline selected. Choose a design and click the card to paint it.' : 'Vinyl sticker selected. Choose a design and click the card to attach it.');
 });
 document.querySelector('#sticker-file').addEventListener('change', async event => {
   const file = event.target.files[0]; if (!file) return;
