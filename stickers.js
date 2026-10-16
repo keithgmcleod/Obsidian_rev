@@ -453,9 +453,9 @@ function textureFor(design) {
 }
 function graffitiPaintTexture(source, colour, seed) {
   const random = seededRandom(seed), mask = document.createElement('canvas');
-  const scale = Math.min(1, 1200 / source.image.width), padding = 24;
+  const scale = Math.min(1, 1200 / source.image.width), padding = 48;
   const w = Math.ceil(source.image.width * scale) + padding * 2;
-  const h = Math.ceil(source.image.height * scale) + padding * 2 + 85;
+  const h = Math.ceil(source.image.height * scale) + padding * 2 + 220;
   mask.width = w; mask.height = h;
   const ink = mask.getContext('2d', { willReadFrequently: true });
   ink.drawImage(source.image, padding, padding, w - padding * 2, source.image.height * scale);
@@ -467,10 +467,10 @@ function graffitiPaintTexture(source, colour, seed) {
     let x, y = -1;
     for (let attempt = 0; attempt < 40 && y < 0; attempt++) {
       x = Math.floor(padding + random() * (w - padding * 2));
-      for (let row = h - 86; row >= padding; row--) if (pixels[(row * w + x) * 4 + 3] > 180) { y = row; break; }
+      for (let row = h - 221; row >= padding; row--) if (pixels[(row * w + x) * 4 + 3] > 180) { y = row; break; }
     }
     if (y < 0) continue;
-    const length = 15 + Math.pow(random(), .7) * 65, thickness = 1.4 + random() * 3.2;
+    const length = 40 + Math.pow(random(), .7) * 155, thickness = 2.5 + random() * 5.5;
     const drift = (random() - .5) * 7;
     ink.beginPath(); ink.moveTo(x, y - 3);
     ink.bezierCurveTo(x + drift, y + length * .35, x - drift, y + length * .8, x + drift * .4, y + length);
@@ -481,55 +481,59 @@ function graffitiPaintTexture(source, colour, seed) {
   const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   // Two soft coats give the edges a cloud of overspray around the solid letters.
-  context.filter = 'blur(7px)'; context.globalAlpha = .24; context.drawImage(mask, 0, 0);
-  context.filter = 'blur(2px)'; context.globalAlpha = .32; context.drawImage(mask, 0, 0);
+  context.filter = 'blur(18px)'; context.globalAlpha = .5; context.drawImage(mask, 0, 0);
+  context.filter = 'blur(6px)'; context.globalAlpha = .55; context.drawImage(mask, 0, 0);
   context.filter = 'none'; context.globalAlpha = .94; context.drawImage(mask, 0, 0);
   const image = context.getImageData(0, 0, w, h), data = image.data;
   for (let i = 3; i < data.length; i += 4) {
     const grain = random();
     // Fine pigment variation inside the text and sparse droplets in the spray cloud.
-    data[i] = data[i] > 150 ? Math.round(data[i] * (.78 + grain * .22)) : Math.round(data[i] * (grain > .67 ? 1.8 : .18));
+    const pixel = (i - 3) / 4, x = pixel % w, y = Math.floor(pixel / w);
+    const mottling = .9 + .07 * Math.sin(x * .073 + Math.sin(y * .09) * 2) + .03 * Math.sin(y * .13 + x * .037);
+    if (data[i] > 150) {
+      data[i] = Math.round(data[i] * (grain < .025 ? .25 : (.86 + grain * .14) * mottling));
+      const tone = .85 + random() * .15;
+      data[i - 3] *= tone; data[i - 2] *= tone; data[i - 1] *= tone;
+    } else data[i] = Math.min(255, Math.round(data[i] * (grain > .66 ? 2.3 : .3)));
   }
   context.putImageData(image, 0, 0);
+  context.fillStyle = colour; context.globalAlpha = .45;
+  // Larger, individually visible droplets accumulate outside the painted edges.
+  for (let dot = 0; dot < Math.floor(w * h / 75); dot++) {
+    const x = Math.floor(random() * w), y = Math.floor(random() * h);
+    if (data[(y * w + x) * 4 + 3] < 4 || data[(y * w + x) * 4 + 3] > 140) continue;
+    context.beginPath(); context.arc(x, y, .5 + random() * 1.4, 0, Math.PI * 2); context.fill();
+  }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 8;
   return texture;
 }
-function sprayTexture(source, colour, seed) {
+function sprayTexture(source, colour, seed, designKey) {
   const canvas = document.createElement('canvas');
-  const scale = Math.min(1, 1024 / Math.max(source.image.width, source.image.height));
-  canvas.width = Math.max(16, Math.round(source.image.width * scale));
-  canvas.height = Math.max(16, Math.round(source.image.height * scale));
+  const scale = Math.min(1, 1000 / Math.max(source.image.width, source.image.height));
+  canvas.width = Math.round(source.image.width * scale); canvas.height = Math.round(source.image.height * scale);
   const context = canvas.getContext('2d', { willReadFrequently: true });
   context.drawImage(source.image, 0, 0, canvas.width, canvas.height);
-  const { width: w, height: h } = canvas;
-  const pixels = context.getImageData(0, 0, w, h).data;
-  const edges = new Float32Array(w * h);
-  const sample = (x, y) => {
-    if (x < 0 || y < 0 || x >= w || y >= h) return [0, 0];
-    const i = (y * w + x) * 4, alpha = pixels[i + 3] / 255;
-    return [alpha, (pixels[i] * .2126 + pixels[i + 1] * .7152 + pixels[i + 2] * .0722) / 255 * alpha];
-  };
-  // Trace both the die-cut silhouette and printed artwork for a readable stencil.
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const a = sample(x - 2, y), b = sample(x + 2, y), c = sample(x, y - 2), d = sample(x, y + 2);
-    edges[y * w + x] = Math.min(1, Math.max(Math.hypot(a[0] - b[0], c[0] - d[0]), Math.hypot(a[1] - b[1], c[1] - d[1])) * 1.7);
-  }
-  const output = context.createImageData(w, h), random = seededRandom(seed);
-  const rgb = colour.match(/[a-f\d]{2}/gi).map(value => parseInt(value, 16));
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let nearby = edges[y * w + x], mist = 0;
-    for (const [dx, dy] of [[-4,0],[4,0],[0,-4],[0,4],[-3,-3],[3,3],[-3,3],[3,-3]]) {
-      if (x + dx >= 0 && x + dx < w && y + dy >= 0 && y + dy < h) mist += edges[(y + dy) * w + x + dx];
+  const image = context.getImageData(0, 0, canvas.width, canvas.height), pixels = image.data;
+  const circular = /v-ring-seal|v-badge/.test(designKey);
+  const lettering = /v-diecut-rent-day|v-diecut-neighborhood/.test(designKey);
+  for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+    const i = (y * canvas.width + x) * 4;
+    const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+    const chroma = Math.max(r,g,b) - Math.min(r,g,b), light = (r + g + b) / 3;
+    let ink = lettering ? chroma > 42 && light > 65 : light > 120 && (chroma > 28 || light > 175);
+    if (circular) {
+      const dx = (x / canvas.width - .5) * 2, dy = (y / canvas.height - .5) * 2;
+      // Remove the vinyl perimeter and cut support bridges through the stencil.
+      const radius = Math.hypot(dx, dy), angle = Math.atan2(dy, dx);
+      const bridge = Math.abs(Math.sin(angle * 2 + .32)) < .018;
+      ink = ink && radius < .92 && !bridge;
     }
-    const grain = random(), alpha = Math.min(1, nearby * (.62 + grain * .38) + mist * .035 * (grain > .62 ? 1 : .15));
-    const i = (y * w + x) * 4;
-    output.data[i] = rgb[0]; output.data[i + 1] = rgb[1]; output.data[i + 2] = rgb[2]; output.data[i + 3] = Math.round(alpha * 255);
+    pixels[i] = pixels[i + 1] = pixels[i + 2] = 255;
+    pixels[i + 3] = ink ? pixels[i + 3] : 0;
   }
-  context.putImageData(output, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 8;
-  return texture;
+  context.putImageData(image, 0, 0);
+  return graffitiPaintTexture({ image: canvas }, colour, seed);
 }
 function disposeDecal(entry) {
   entry.decal?.removeFromParent(); entry.decal?.geometry.dispose();
@@ -635,7 +639,7 @@ async function place(event) {
     entry.texture = await textureFor(entry.finish === 'spray' && design.custom ? { url: design.paintUrl } : design);
     if (generation !== stamp || cardKey() !== key) return;
     if (entry.finish === 'spray') {
-      entry.texture = design.custom ? graffitiPaintTexture(entry.texture, entry.paintColour, entry.seed) : sprayTexture(entry.texture, entry.paintColour, entry.seed);
+      entry.texture = design.custom ? graffitiPaintTexture(entry.texture, entry.paintColour, entry.seed) : sprayTexture(entry.texture, entry.paintColour, entry.seed, entry.designKey);
       entry.folds = 0;
     }
     if (!cards.has(key)) cards.set(key, []);
