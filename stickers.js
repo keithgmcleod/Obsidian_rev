@@ -408,6 +408,13 @@ async function updateGraffiti() {
     gold.addColorStop(0, '#E8CB94'); gold.addColorStop(1, '#876313');
     context.fillStyle = gold; context.fillText(text, x, y);
     customDesign.url = graffitiCanvas.toDataURL('image/png'); customDesign.text = text;
+    // Keep a separate glyph-only mask for paint: no vinyl border or black outline.
+    const paintCanvas = document.createElement('canvas');
+    paintCanvas.width = graffitiCanvas.width; paintCanvas.height = graffitiCanvas.height;
+    const paintContext = paintCanvas.getContext('2d');
+    paintContext.scale(scale, scale); paintContext.font = `${size}px "Sticker Knerd"`;
+    paintContext.fillStyle = '#fff'; paintContext.fillText(text, x, y);
+    customDesign.paintUrl = paintCanvas.toDataURL('image/png');
     picker.querySelector('.graffiti-choice').replaceChildren(Object.assign(document.createElement('img'), { src: customDesign.url, alt: '' }));
     if (activeDesign === customDesign) message('Your graffiti is ready. Click the card to place a copy.');
   } catch (error) {
@@ -443,6 +450,50 @@ function textureFor(design) {
     }).catch(error => { textureCache.delete(design.url); throw error; }));
   }
   return textureCache.get(design.url);
+}
+function graffitiPaintTexture(source, colour, seed) {
+  const random = seededRandom(seed), mask = document.createElement('canvas');
+  const scale = Math.min(1, 1200 / source.image.width), padding = 24;
+  const w = Math.ceil(source.image.width * scale) + padding * 2;
+  const h = Math.ceil(source.image.height * scale) + padding * 2 + 85;
+  mask.width = w; mask.height = h;
+  const ink = mask.getContext('2d', { willReadFrequently: true });
+  ink.drawImage(source.image, padding, padding, w - padding * 2, source.image.height * scale);
+  const pixels = ink.getImageData(0, 0, w, h).data;
+  // Drips begin on the lower edges of the actual letters, never on a sticker border.
+  ink.fillStyle = colour; ink.strokeStyle = colour; ink.lineCap = 'round';
+  const count = Math.max(4, Math.min(16, Math.round(w / 95)));
+  for (let drip = 0; drip < count; drip++) {
+    let x, y = -1;
+    for (let attempt = 0; attempt < 40 && y < 0; attempt++) {
+      x = Math.floor(padding + random() * (w - padding * 2));
+      for (let row = h - 86; row >= padding; row--) if (pixels[(row * w + x) * 4 + 3] > 180) { y = row; break; }
+    }
+    if (y < 0) continue;
+    const length = 15 + Math.pow(random(), .7) * 65, thickness = 1.4 + random() * 3.2;
+    const drift = (random() - .5) * 7;
+    ink.beginPath(); ink.moveTo(x, y - 3);
+    ink.bezierCurveTo(x + drift, y + length * .35, x - drift, y + length * .8, x + drift * .4, y + length);
+    ink.lineWidth = thickness; ink.stroke();
+    ink.beginPath(); ink.ellipse(x + drift * .4, y + length, thickness * .65, thickness, 0, 0, Math.PI * 2); ink.fill();
+  }
+  ink.globalCompositeOperation = 'source-in'; ink.fillRect(0, 0, w, h);
+  const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  // Two soft coats give the edges a cloud of overspray around the solid letters.
+  context.filter = 'blur(7px)'; context.globalAlpha = .24; context.drawImage(mask, 0, 0);
+  context.filter = 'blur(2px)'; context.globalAlpha = .32; context.drawImage(mask, 0, 0);
+  context.filter = 'none'; context.globalAlpha = .94; context.drawImage(mask, 0, 0);
+  const image = context.getImageData(0, 0, w, h), data = image.data;
+  for (let i = 3; i < data.length; i += 4) {
+    const grain = random();
+    // Fine pigment variation inside the text and sparse droplets in the spray cloud.
+    data[i] = data[i] > 150 ? Math.round(data[i] * (.78 + grain * .22)) : Math.round(data[i] * (grain > .67 ? 1.8 : .18));
+  }
+  context.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 8;
+  return texture;
 }
 function sprayTexture(source, colour, seed) {
   const canvas = document.createElement('canvas');
@@ -547,7 +598,7 @@ function rebuild(entry) {
   geometry.applyMatrix4(target.matrixWorld.clone().invert());
   geometry.computeVertexNormals(); geometry.computeBoundingSphere();
   const material = new THREE.MeshPhysicalMaterial({ map: entry.texture, transparent: true,
-    side: THREE.DoubleSide, alphaTest: 0.025, roughness: entry.finish === 'spray' ? .95 : .38, metalness: 0,
+    side: THREE.DoubleSide, alphaTest: entry.finish === 'spray' ? .002 : .025, roughness: entry.finish === 'spray' ? .95 : .38, metalness: 0,
     clearcoat: entry.finish === 'spray' ? 0 : .28, clearcoatRoughness: 0.42, depthWrite: true,
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   if (entry.finish !== 'spray') material.onBeforeCompile = shader => {
@@ -581,10 +632,10 @@ async function place(event) {
     finish: finishInput.value, paintColour: paintColour.value, decal: null };
   message('Attaching sticker…');
   try {
-    entry.texture = await textureFor(design);
+    entry.texture = await textureFor(entry.finish === 'spray' && design.custom ? { url: design.paintUrl } : design);
     if (generation !== stamp || cardKey() !== key) return;
     if (entry.finish === 'spray') {
-      entry.texture = sprayTexture(entry.texture, entry.paintColour, entry.seed);
+      entry.texture = design.custom ? graffitiPaintTexture(entry.texture, entry.paintColour, entry.seed) : sprayTexture(entry.texture, entry.paintColour, entry.seed);
       entry.folds = 0;
     }
     if (!cards.has(key)) cards.set(key, []);
