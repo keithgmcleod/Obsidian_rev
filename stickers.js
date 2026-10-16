@@ -29,6 +29,17 @@ const silhouettes = new WeakMap();
 const foldSeeds = new Set();
 let foldSequence = 0;
 let stickerSequence = 0;
+const wetPaint = new Set();
+let paintFrame = 0;
+function animatePaint(now) {
+  paintFrame = 0;
+  for (const entry of wetPaint) {
+    entry.paintProgress.value = Math.min(1, Math.max(0, (now - entry.paintStarted) / 4200));
+    if (entry.paintProgress.value === 1) wetPaint.delete(entry);
+  }
+  render();
+  if (wetPaint.size) paintFrame = requestAnimationFrame(animatePaint);
+}
 
 function freshFoldSeed(design) {
   let hash = 2166136261;
@@ -459,13 +470,15 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0) {
   const rotatedWidth = Math.abs(Math.cos(angle)) * sw + Math.abs(Math.sin(angle)) * sh;
   const rotatedHeight = Math.abs(Math.sin(angle)) * sw + Math.abs(Math.cos(angle)) * sh;
   const w = Math.ceil(rotatedWidth) + padding * 2;
-  const h = Math.ceil(rotatedHeight) + padding * 2 + 660;
+  const h = Math.ceil(rotatedHeight) + padding * 2 + 210;
   mask.width = w; mask.height = h;
   const ink = mask.getContext('2d', { willReadFrequently: true });
   // Rotate the artwork first, then paint gravity-aligned drips in card coordinates.
   ink.save(); ink.translate(w / 2, padding + rotatedHeight / 2); ink.rotate(-angle);
   ink.drawImage(source.image, -sw / 2, -sh / 2, sw, sh); ink.restore();
   const pixels = ink.getImageData(0, 0, w, h).data;
+  const reveal = document.createElement('canvas'); reveal.width = w; reveal.height = h;
+  const revealContext = reveal.getContext('2d'); revealContext.lineCap = 'round';
   // Drips begin on the lower edges of the actual letters, never on a sticker border.
   ink.fillStyle = colour; ink.strokeStyle = colour; ink.lineCap = 'round';
   const count = Math.max(4, Math.min(16, Math.round(w / 95)));
@@ -473,14 +486,20 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0) {
     let x, y = -1;
     for (let attempt = 0; attempt < 40 && y < 0; attempt++) {
       x = Math.floor(padding + random() * (w - padding * 2));
-      for (let row = h - 661; row >= padding; row--) if (pixels[(row * w + x) * 4 + 3] > 180) { y = row; break; }
+      for (let row = h - 211; row >= padding; row--) if (pixels[(row * w + x) * 4 + 3] > 180) { y = row; break; }
     }
     if (y < 0) continue;
-    const length = 3 * (40 + Math.pow(random(), .7) * 155), thickness = 3 * (2.5 + random() * 5.5);
+    const length = .75 * (40 + Math.pow(random(), .7) * 155), thickness = 3 * (2.5 + random() * 5.5);
     const drift = (random() - .5) * 7;
     ink.beginPath(); ink.moveTo(x, y - 3);
     ink.bezierCurveTo(x + drift, y + length * .35, x - drift, y + length * .8, x + drift * .4, y + length);
     ink.lineWidth = thickness; ink.stroke();
+    const gradient = revealContext.createLinearGradient(0, y - 15, 0, y + length + thickness);
+    gradient.addColorStop(0, '#000'); gradient.addColorStop(1, '#fff');
+    revealContext.strokeStyle = gradient; revealContext.lineWidth = thickness + 65;
+    revealContext.beginPath(); revealContext.moveTo(x, y);
+    revealContext.bezierCurveTo(x + drift, y + length * .35, x - drift, y + length * .8, x + drift * .4, y + length);
+    revealContext.stroke();
     ink.beginPath(); ink.ellipse(x + drift * .4, y + length, thickness * .65, thickness, 0, 0, Math.PI * 2); ink.fill();
   }
   ink.globalCompositeOperation = 'source-in'; ink.fillRect(0, 0, w, h);
@@ -511,6 +530,12 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0) {
     context.beginPath(); context.arc(x, y, .5 + random() * 1.4, 0, Math.PI * 2); context.fill();
   }
   const texture = new THREE.CanvasTexture(canvas);
+  const revealPixels = revealContext.getImageData(0, 0, w, h);
+  for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 8) revealPixels.data[i] = 0;
+  revealContext.putImageData(revealPixels, 0, 0);
+  const revealTexture = new THREE.CanvasTexture(reveal);
+  texture.userData.dripReveal = revealTexture;
+  texture.addEventListener('dispose', () => revealTexture.dispose());
   texture.userData.paintAnchorOffset = (h / 2 - padding - rotatedHeight / 2) / w;
   texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 8;
   return texture;
@@ -543,6 +568,7 @@ function sprayTexture(source, colour, seed, designKey, rotation = 0) {
   return graffitiPaintTexture({ image: canvas }, colour, seed, rotation);
 }
 function disposeDecal(entry) {
+  wetPaint.delete(entry);
   entry.decal?.removeFromParent(); entry.decal?.geometry.dispose();
   entry.decal?.material.dispose(); entry.decal = null;
 }
@@ -621,6 +647,17 @@ function rebuild(entry) {
     side: THREE.DoubleSide, alphaTest: entry.finish === 'spray' ? .002 : .025, roughness: entry.finish === 'spray' ? .95 : .38, metalness: 0,
     clearcoat: entry.finish === 'spray' ? 0 : .28, clearcoatRoughness: 0.42, depthWrite: true,
     polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  if (entry.finish === 'spray') {
+    entry.paintStarted ??= performance.now();
+    entry.paintProgress ||= { value: matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 0 };
+    material.onBeforeCompile = shader => {
+      shader.uniforms.dripReveal = { value: entry.texture.userData.dripReveal };
+      shader.uniforms.dripProgress = entry.paintProgress;
+      shader.fragmentShader = 'uniform sampler2D dripReveal; uniform float dripProgress;\n' + shader.fragmentShader;
+      shader.fragmentShader = shader.fragmentShader.replace('#include <alphamap_fragment>', '#include <alphamap_fragment>\nvec4 drip = texture2D(dripReveal, vMapUv);\ndiffuseColor.a *= mix(1.0, smoothstep(drip.r - 0.04, drip.r + 0.04, dripProgress * 1.1), drip.a);');
+    };
+    if (entry.paintProgress.value < 1) { wetPaint.add(entry); if (!paintFrame) paintFrame = requestAnimationFrame(animatePaint); }
+  }
   if (entry.finish !== 'spray') material.onBeforeCompile = shader => {
     shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\nif (!gl_FrontFacing) diffuseColor.rgb = vec3(0.92);');
   };
