@@ -451,14 +451,20 @@ function textureFor(design) {
   }
   return textureCache.get(design.url);
 }
-function graffitiPaintTexture(source, colour, seed) {
+function graffitiPaintTexture(source, colour, seed, rotation = 0) {
   const random = seededRandom(seed), mask = document.createElement('canvas');
   const scale = Math.min(1, 1200 / source.image.width), padding = 48;
-  const w = Math.ceil(source.image.width * scale) + padding * 2;
-  const h = Math.ceil(source.image.height * scale) + padding * 2 + 220;
+  const angle = THREE.MathUtils.degToRad(rotation);
+  const sw = source.image.width * scale, sh = source.image.height * scale;
+  const rotatedWidth = Math.abs(Math.cos(angle)) * sw + Math.abs(Math.sin(angle)) * sh;
+  const rotatedHeight = Math.abs(Math.sin(angle)) * sw + Math.abs(Math.cos(angle)) * sh;
+  const w = Math.ceil(rotatedWidth) + padding * 2;
+  const h = Math.ceil(rotatedHeight) + padding * 2 + 660;
   mask.width = w; mask.height = h;
   const ink = mask.getContext('2d', { willReadFrequently: true });
-  ink.drawImage(source.image, padding, padding, w - padding * 2, source.image.height * scale);
+  // Rotate the artwork first, then paint gravity-aligned drips in card coordinates.
+  ink.save(); ink.translate(w / 2, padding + rotatedHeight / 2); ink.rotate(-angle);
+  ink.drawImage(source.image, -sw / 2, -sh / 2, sw, sh); ink.restore();
   const pixels = ink.getImageData(0, 0, w, h).data;
   // Drips begin on the lower edges of the actual letters, never on a sticker border.
   ink.fillStyle = colour; ink.strokeStyle = colour; ink.lineCap = 'round';
@@ -467,10 +473,10 @@ function graffitiPaintTexture(source, colour, seed) {
     let x, y = -1;
     for (let attempt = 0; attempt < 40 && y < 0; attempt++) {
       x = Math.floor(padding + random() * (w - padding * 2));
-      for (let row = h - 221; row >= padding; row--) if (pixels[(row * w + x) * 4 + 3] > 180) { y = row; break; }
+      for (let row = h - 661; row >= padding; row--) if (pixels[(row * w + x) * 4 + 3] > 180) { y = row; break; }
     }
     if (y < 0) continue;
-    const length = 40 + Math.pow(random(), .7) * 155, thickness = 2.5 + random() * 5.5;
+    const length = 3 * (40 + Math.pow(random(), .7) * 155), thickness = 3 * (2.5 + random() * 5.5);
     const drift = (random() - .5) * 7;
     ink.beginPath(); ink.moveTo(x, y - 3);
     ink.bezierCurveTo(x + drift, y + length * .35, x - drift, y + length * .8, x + drift * .4, y + length);
@@ -505,10 +511,11 @@ function graffitiPaintTexture(source, colour, seed) {
     context.beginPath(); context.arc(x, y, .5 + random() * 1.4, 0, Math.PI * 2); context.fill();
   }
   const texture = new THREE.CanvasTexture(canvas);
+  texture.userData.paintAnchorOffset = (h / 2 - padding - rotatedHeight / 2) / w;
   texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 8;
   return texture;
 }
-function sprayTexture(source, colour, seed, designKey) {
+function sprayTexture(source, colour, seed, designKey, rotation = 0) {
   const canvas = document.createElement('canvas');
   const scale = Math.min(1, 1000 / Math.max(source.image.width, source.image.height));
   canvas.width = Math.round(source.image.width * scale); canvas.height = Math.round(source.image.height * scale);
@@ -533,7 +540,7 @@ function sprayTexture(source, colour, seed, designKey) {
     pixels[i + 3] = ink ? pixels[i + 3] : 0;
   }
   context.putImageData(image, 0, 0);
-  return graffitiPaintTexture({ image: canvas }, colour, seed);
+  return graffitiPaintTexture({ image: canvas }, colour, seed, rotation);
 }
 function disposeDecal(entry) {
   entry.decal?.removeFromParent(); entry.decal?.geometry.dispose();
@@ -541,6 +548,14 @@ function disposeDecal(entry) {
 }
 function rebuild(entry) {
   disposeDecal(entry);
+  if (entry.finish === 'spray' && entry.paintRotation !== entry.rotation) {
+    if (entry.paintRotation != null) entry.texture.dispose();
+    entry.texture = entry.customText
+      ? graffitiPaintTexture(entry.paintSource, entry.paintColour, entry.seed, entry.rotation)
+      : sprayTexture(entry.paintSource, entry.paintColour, entry.seed, entry.designKey, entry.rotation);
+    entry.paintRotation = entry.rotation;
+    entry.organic = null;
+  }
   const target = meshes[entry.meshIndex];
   if (!target) return;
   model.updateWorldMatrix(true, true);
@@ -548,10 +563,11 @@ function rebuild(entry) {
   const referenceNormal = entry.normal.clone().applyNormalMatrix(new THREE.Matrix3().getNormalMatrix(target.matrixWorld)).normalize();
   const frame = cardFrame(referenceNormal);
   const worldNormal = frame.normal;
-  const angle = THREE.MathUtils.degToRad(entry.rotation);
+  const angle = entry.finish === 'spray' ? 0 : THREE.MathUtils.degToRad(entry.rotation);
   const right = frame.right.clone().multiplyScalar(Math.cos(angle)).addScaledVector(frame.up, Math.sin(angle));
   const up = frame.up.clone().multiplyScalar(Math.cos(angle)).addScaledVector(frame.right, -Math.sin(angle));
   const width = frame.width * entry.size / 100 * stickerScale(entry);
+  if (entry.finish === 'spray') worldPoint.addScaledVector(frame.up, -width * (entry.texture.userData.paintAnchorOffset || 0));
   const image = entry.texture.image;
   const height = width * image.height / image.width;
   const surface = captureSurface(worldPoint, worldNormal, up, width, height, frame.width);
@@ -639,7 +655,7 @@ async function place(event) {
     entry.texture = await textureFor(entry.finish === 'spray' && design.custom ? { url: design.paintUrl } : design);
     if (generation !== stamp || cardKey() !== key) return;
     if (entry.finish === 'spray') {
-      entry.texture = design.custom ? graffitiPaintTexture(entry.texture, entry.paintColour, entry.seed) : sprayTexture(entry.texture, entry.paintColour, entry.seed, entry.designKey);
+      entry.paintSource = entry.texture;
       entry.folds = 0;
     }
     if (!cards.has(key)) cards.set(key, []);
