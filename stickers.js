@@ -23,6 +23,119 @@ let surfaceRenderer;
 let selectedEntry = null, drag = null, dragFrame = 0, suppressClickUntil = 0;
 let cardAvailable = !viewer.hidden;
 const alphaMasks = new WeakMap();
+const silhouettes = new WeakMap();
+const foldSeeds = new Set();
+let foldSequence = 0;
+let stickerSequence = 0;
+
+function freshFoldSeed(design) {
+  let hash = 2166136261;
+  for (const character of design) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  let seed = (crypto.getRandomValues(new Uint32Array(1))[0] ^ hash ^ Math.imul(++foldSequence, 2654435761)) >>> 0;
+  while (foldSeeds.has(seed)) seed = (seed + 2654435761) >>> 0;
+  foldSeeds.add(seed); return seed;
+}
+function seededRandom(seed) {
+  return () => {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let value = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  };
+}
+function silhouetteFor(texture) {
+  if (silhouettes.has(texture)) return silhouettes.get(texture);
+  const resolution = 128, aspect = texture.image.height / texture.image.width;
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = resolution;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(texture.image, 0, 0, resolution, resolution);
+  const pixels = context.getImageData(0, 0, resolution, resolution).data;
+  const inside = new Uint8Array(resolution * resolution), distance = new Float32Array(inside.length);
+  const contour = [], interior = [];
+  const dx = 1 / (resolution - 1), dy = aspect / (resolution - 1), diagonal = Math.hypot(dx, dy);
+  for (let i = 0; i < inside.length; i++) inside[i] = pixels[i * 4 + 3] > 24 ? 1 : 0;
+  for (let y = 0; y < resolution; y++) for (let x = 0; x < resolution; x++) {
+    const i = y * resolution + x;
+    distance[i] = inside[i] && x > 0 && y > 0 && x < resolution - 1 && y < resolution - 1 ? 1000 : 0;
+    if (!inside[i]) continue;
+    const point = { u: x * dx, v: 1 - y / (resolution - 1) };
+    interior.push(point);
+    if (!x || !y || x === resolution - 1 || y === resolution - 1 ||
+        !inside[i - 1] || !inside[i + 1] || !inside[i - resolution] || !inside[i + resolution]) contour.push(point);
+  }
+  for (let y = 1; y < resolution - 1; y++) for (let x = 1; x < resolution - 1; x++) {
+    const i = y * resolution + x;
+    distance[i] = Math.min(distance[i], distance[i - 1] + dx, distance[i - resolution] + dy,
+      distance[i - resolution - 1] + diagonal, distance[i - resolution + 1] + diagonal);
+  }
+  for (let y = resolution - 2; y > 0; y--) for (let x = resolution - 2; x > 0; x--) {
+    const i = y * resolution + x;
+    distance[i] = Math.min(distance[i], distance[i + 1] + dx, distance[i + resolution] + dy,
+      distance[i + resolution - 1] + diagonal, distance[i + resolution + 1] + diagonal);
+  }
+  const result = { resolution, aspect, distance, contour, interior, dx, dy };
+  silhouettes.set(texture, result); return result;
+}
+function organicProfile(entry) {
+  const shape = silhouetteFor(entry.texture), random = seededRandom(entry.seed);
+  const range = (min, max) => min + (max - min) * random();
+  const pick = list => list[Math.floor(random() * list.length)] || { u: 0.5, v: 0.5 };
+  const creases = Array.from({ length: 2 + Math.floor(random() * 3) }, () => {
+    const anchor = pick(shape.interior), angle = range(0, Math.PI);
+    return { ...anchor, cos: Math.cos(angle), sin: Math.sin(angle), width: range(0.008, 0.025),
+      length: range(0.14, 0.46), curve: range(-1.1, 1.1), amplitude: range(0.3, 1.15), phase: range(0, Math.PI * 2) };
+  });
+  const curls = [];
+  const curlCount = 1 + Math.floor(random() * 3);
+  for (let i = 0; i < curlCount; i++) {
+    let anchor = pick(shape.contour);
+    for (let attempt = 0; attempt < 20 && curls.some(c => Math.hypot(c.u - anchor.u, (c.v - anchor.v) * shape.aspect) < 0.14); attempt++) anchor = pick(shape.contour);
+    curls.push({ ...anchor, depth: Math.min(range(0.035, 0.075), shape.aspect * 0.24),
+      span: range(0.07, 0.18), angle: range(2.0, 3.0), phase: range(0, Math.PI * 2) });
+  }
+  const wrinkles = Array.from({ length: 2 + Math.floor(random() * 4) }, () => ({
+    ...pick(shape.interior), angle: range(0, Math.PI * 2), frequency: range(22, 48),
+    phase: range(0, Math.PI * 2), spread: range(0.06, 0.17), amplitude: range(0.035, 0.14),
+  }));
+  return { shape, creases, curls, wrinkles };
+}
+function organicDeformation(profile, u, v, amount, result) {
+  const { shape } = profile, { resolution, aspect, distance } = shape;
+  result.x = result.y = result.z = result.ridges = 0;
+  if (amount <= 0) return result;
+  for (const crease of profile.creases) {
+    const x = u - crease.u, y = (v - crease.v) * aspect;
+    const along = x * crease.cos + y * crease.sin;
+    const across = -x * crease.sin + y * crease.cos - crease.curve * along * along - Math.sin(along * 15 + crease.phase) * 0.003;
+    result.ridges += crease.amplitude * Math.exp(-Math.pow(across / crease.width, 2) - Math.pow(along / crease.length, 4));
+  }
+  for (const wrinkle of profile.wrinkles) {
+    const x = u - wrinkle.u, y = (v - wrinkle.v) * aspect;
+    const wave = Math.sin((x * Math.cos(wrinkle.angle) + y * Math.sin(wrinkle.angle)) * wrinkle.frequency + wrinkle.phase);
+    result.ridges += wrinkle.amplitude * wave * wave * Math.exp(-(x * x + y * y) / (wrinkle.spread * wrinkle.spread));
+  }
+  const ix = THREE.MathUtils.clamp(Math.round(u * (resolution - 1)), 1, resolution - 2);
+  const iy = THREE.MathUtils.clamp(Math.round((1 - v) * (resolution - 1)), 1, resolution - 2);
+  const index = iy * resolution + ix, inset = distance[index];
+  let nx = (distance[index - 1] - distance[index + 1]) / (2 * shape.dx);
+  let ny = (distance[index + resolution] - distance[index - resolution]) / (2 * shape.dy);
+  const normalLength = Math.hypot(nx, ny);
+  if (normalLength > 0.0001) { nx /= normalLength; ny /= normalLength; }
+  else return result;
+  for (const curl of profile.curls) {
+    if (inset >= curl.depth) continue;
+    const x = u - curl.u, y = (v - curl.v) * aspect;
+    const envelope = Math.exp(-(x * x + y * y) / (2 * curl.span * curl.span));
+    const travel = curl.depth - inset;
+    const angle = travel / curl.depth * curl.angle * Math.sqrt(amount) * envelope;
+    if (angle < 0.0001) continue;
+    const height = travel * (1 - Math.cos(angle)) / angle;
+    if (height <= result.z) continue;
+    const retreat = travel * (Math.sin(angle) / angle - 1);
+    result.x = nx * retreat; result.y = ny * retreat; result.z = height;
+  }
+  return result;
+}
 
 function pointerRay(event) {
   model.updateWorldMatrix(true, true);
@@ -306,27 +419,27 @@ function rebuild(entry) {
   const positions = geometry.attributes.position;
   const uvs = geometry.attributes.uv;
   const foldAmount = (entry.folds ?? 35) / 100;
+  entry.seed ??= freshFoldSeed(entry.designKey || 'import');
+  entry.organic ||= organicProfile(entry);
   const clearance = frame.width * 0.0009;
   const lift = width * 0.026 * foldAmount;
   const point = new THREE.Vector3();
   const flat = new THREE.Vector3();
   const edgeState = { outward: new THREE.Vector3() };
+  const deformation = {};
   const anchorDepth = worldPoint.clone().sub(frame.center).dot(worldNormal);
   const bendRadius = frame.front + clearance;
   let backSurface = null, wrappedVertices = 0;
   for (let i = 0; i < positions.count; i++) {
     const u = uvs.getX(i), v = uvs.getY(i);
-    const x = (u - 0.5) * width, y = (v - 0.5) * height;
-    const diagonal = (u - 0.5) + 0.55 * (v - 0.5) - 0.06;
-    const crease = Math.exp(-Math.pow(diagonal / 0.035, 2)) * Math.pow(Math.sin(Math.PI * v), 2);
-    const secondary = Math.exp(-Math.pow(((v - 0.5) - 0.32 * (u - 0.5) + 0.15) / 0.026, 2)) * Math.pow(Math.sin(Math.PI * u), 2) * 0.45;
-    const corner = Math.pow(Math.max(0, (u + v - 1.35) / 0.65), 2) * 1.6;
-    const ripple = Math.pow(Math.sin((u * 2.7 + v * 1.3) * Math.PI), 2) * Math.pow(Math.abs(u - 0.5) * 2, 8) * 0.18;
-    const folds = lift * (crease + secondary + corner + ripple);
+    organicDeformation(entry.organic, u, v, foldAmount, deformation);
+    const x = (u - 0.5 + deformation.x) * width;
+    const y = (v - 0.5) * height + deformation.y * width;
+    const folds = lift * deformation.ridges + width * deformation.z;
     flat.copy(worldPoint).addScaledVector(right, x).addScaledVector(up, y);
     const edge = boundaryAt(frame, flat, edgeState);
     if (edge.distance <= 0) {
-      const faceHeight = anchorDepth + surface(u, v);
+      const faceHeight = anchorDepth + Math.max(surface(u, v), surface(u + deformation.x, v + deformation.y * width / height));
       point.copy(frame.center).addScaledVector(frame.right, edge.x).addScaledVector(frame.up, edge.y)
         .addScaledVector(worldNormal, Math.max(frame.front, faceHeight) + clearance + folds);
     } else {
@@ -359,6 +472,8 @@ function rebuild(entry) {
   entry.decal.renderOrder = 10 + entries().indexOf(entry); entry.decal.userData.cardSticker = true;
   entry.decal.userData.noHit = true;
   entry.decal.userData.folds = entry.folds ?? 35;
+  entry.decal.userData.foldSeed = entry.seed;
+  entry.decal.userData.stickerId = entry.id;
   entry.decal.userData.wrappedVertices = wrappedVertices;
   entry.decal.userData.edgeWrap = true;
   target.add(entry.decal); render();
@@ -373,7 +488,8 @@ async function place(event) {
   if (!hit) { message('Click directly on the card to attach a sticker.'); return; }
   const stamp = generation, key = cardKey(), design = activeDesign;
   const entry = { meshIndex: meshes.indexOf(hit.object), point: hit.object.worldToLocal(hit.point.clone()),
-    normal: hit.face.normal.clone(), size: Number(sizeInput.value), rotation: Number(rotationInput.value), folds: Number(foldsInput.value), decal: null };
+    normal: hit.face.normal.clone(), size: Number(sizeInput.value), rotation: Number(rotationInput.value), folds: Number(foldsInput.value),
+    id: ++stickerSequence, seed: freshFoldSeed(design.url), designKey: design.url, decal: null };
   message('Attaching sticker…');
   try {
     entry.texture = await textureFor(design);
@@ -419,6 +535,14 @@ document.addEventListener('click', event => {
 }, true);
 new MutationObserver(releaseSheets).observe(viewer, { attributes: true, attributeFilter: ['src'] });
 document.querySelector('#sticker-done').addEventListener('click', () => setDesign(null));
+document.querySelector('#sticker-new-folds').addEventListener('click', () => {
+  if (!ready) return;
+  const entry = selectedEntry || entries().at(-1);
+  if (!entry) { message('Add or select a sticker to give it a new fold pattern.'); return; }
+  entry.seed = freshFoldSeed(entry.designKey || 'import'); entry.organic = null;
+  rebuild(entry);
+  message('New organic folds and curls applied to this sticker.');
+});
 document.querySelector('#sticker-undo').addEventListener('click', () => {
   generation++; const entry = entries().pop(); if (entry) disposeDecal(entry);
   if (selectedEntry === entry) selectedEntry = null;

@@ -6,6 +6,8 @@ A responsive single-page viewer for the updated Obsidian card. The refreshed 2K 
 
 Pick artwork under **Make it yours**, then click the card to add it. Click and drag existing stickers to move them; overhang folds around the card edges and onto the back. Drag back onto the face to unfold. Size, Rotation and Folds adjust the selected sticker. PNG, WebP and JPEG imports stay in your browser. Undo and Clear affect the current card; placements remain separate when switching Blue and Obsidian and reset on page refresh.
 
+Every sticker instance receives a fresh organic pattern, including repeated copies of the same design. Curved creases, small wrinkles and localized edge curls follow the artwork's actual transparent cutout. The pattern stays stable through moving, resizing, flipping and switching cards. **Folds** controls its strength; **New folds** gives only the selected sticker another variation. At zero strength, the organic folds and curls are flat while card-edge wrapping remains active.
+
 Choose **Done placing**, then click a blank card area or press Enter to flip it. Clicking or dragging a sticker selects it instead of flipping the card. Palladium remains a placeholder, with sticker controls hidden until a model is supplied.
 
 Sticker sheets sample the full model surface and approximate its rounded edges and thickness. Geometry attachment uses an isolated bridge to the existing pinned model-viewer 4.4.0 scene. Retest the bridge before upgrading. The original card models, materials, lighting, camera-orbit tilt and reflection behavior are preserved.
