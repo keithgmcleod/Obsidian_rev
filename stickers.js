@@ -8,6 +8,33 @@ const rotationInput = document.querySelector('#sticker-rotation');
 const foldsInput = document.querySelector('#sticker-folds');
 const finishInput = document.querySelector('#sticker-finish');
 const paintColour = document.querySelector('#spray-colour');
+const paintPalette = document.querySelector('#paint-palette');
+const paletteColours = [
+  ['Bilt blue', '#97c6ea'], ['Deep blue', '#346da0'], ['Gold', '#edd496'],
+  ['Warm gold', '#e8cb94'], ['Ice blue', '#d1e6fb'], ['Peach', '#fbdfc9'],
+  ['Blush', '#ffdadc'], ['Pink', '#fadbee'], ['Sage', '#e4e6c6'],
+  ['Warm grey', '#edeae8'], ['White', '#fbfbfb'], ['Ink', '#010a13'],
+];
+function syncPaintPalette() {
+  paintPalette.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.colour === paintColour.value)));
+}
+function choosePaintColour(colour) {
+  paintColour.value = colour; syncPaintPalette();
+  const entry = selectedEntry || entries().at(-1);
+  if (ready && entry?.finish === 'spray') {
+    entry.paintColour = colour; rebuild(entry);
+    message('Paint colour updated. This colour will also be used for new paint.');
+  } else message('Paint colour selected. Choose Spray paint to apply it.');
+}
+paletteColours.forEach(([name, colour]) => {
+  const button = document.createElement('button');
+  button.type = 'button'; button.title = name; button.setAttribute('aria-label', name);
+  button.dataset.colour = colour; button.style.backgroundColor = colour;
+  button.addEventListener('click', () => choosePaintColour(colour)); paintPalette.append(button);
+});
+syncPaintPalette();
+paintColour.addEventListener('input', () => choosePaintColour(paintColour.value));
+paintColour.addEventListener('change', () => choosePaintColour(paintColour.value));
 const assets = [
   ['v-ring-seal-bilt-neighborhood', 'Bilt neighborhood'],
   ['v-diecut-rent-day', 'Rent day'],
@@ -179,6 +206,7 @@ function pickSticker(ray) {
 }
 function selectSticker(entry) {
   selectedEntry = entry;
+  if (entry.finish === 'spray') { paintColour.value = entry.paintColour; syncPaintPalette(); }
   foldsInput.disabled = entry.finish === 'spray';
   sizeInput.value = entry.size; rotationInput.value = entry.rotation; foldsInput.value = entry.folds ?? 35;
   message(entry.finish === 'spray' ? 'Paint selected. Drag to move it, or adjust size and rotation.' : 'Sticker selected. Drag to move it, or adjust size, rotation and folds.');
@@ -584,12 +612,13 @@ function disposeDecal(entry) {
 }
 function rebuild(entry) {
   disposeDecal(entry);
-  if (entry.finish === 'spray' && entry.paintRotation !== entry.rotation) {
+  if (entry.finish === 'spray' && (entry.paintRotation !== entry.rotation || entry.renderedPaintColour !== entry.paintColour)) {
     if (entry.paintRotation != null) entry.texture.dispose();
     entry.texture = entry.customText
       ? graffitiPaintTexture(entry.paintSource, entry.paintColour, entry.seed, entry.rotation)
       : sprayTexture(entry.paintSource, entry.paintColour, entry.seed, entry.designKey, entry.rotation);
     entry.paintRotation = entry.rotation;
+    entry.renderedPaintColour = entry.paintColour;
     entry.organic = null;
   }
   const target = meshes[entry.meshIndex];
