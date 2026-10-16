@@ -535,7 +535,7 @@ async function place(event) {
   if (!hit) { message('Click directly on the card to attach a sticker.'); return; }
   const stamp = generation, key = cardKey(), design = { ...activeDesign };
   const entry = { meshIndex: meshes.indexOf(hit.object), point: hit.object.worldToLocal(hit.point.clone()),
-    normal: hit.face.normal.clone(), size: Number(sizeInput.value), rotation: Number(rotationInput.value), folds: Number(foldsInput.value),
+    normal: hit.face.normal.clone(), size: randomSliderValue(sizeInput), rotation: randomSliderValue(rotationInput), folds: randomSliderValue(foldsInput),
     id: ++stickerSequence, seed: freshFoldSeed(design.url), designKey: design.url, customText: design.custom ? design.text : null, decal: null };
   message('Attaching sticker…');
   try {
@@ -543,8 +543,14 @@ async function place(event) {
     if (generation !== stamp || cardKey() !== key) return;
     if (!cards.has(key)) cards.set(key, []);
     cards.get(key).push(entry); rebuild(entry); selectedEntry = entry;
+    sizeInput.value = entry.size; rotationInput.value = entry.rotation; foldsInput.value = entry.folds;
     message(`${design.label} attached. Adjust size, rotation or folds, or click to place another.`);
   } catch (error) { console.error(error); message('Could not load this sticker. Try importing a PNG or WebP.'); }
+}
+function randomSliderValue(input) {
+  const minimum = Number(input.min), step = Number(input.step) || 1;
+  const steps = Math.floor((Number(input.max) - minimum) / step);
+  return minimum + Math.floor(Math.random() * (steps + 1)) * step;
 }
 viewer.addEventListener('click', event => {
   if (activeDesign || drag || performance.now() < suppressClickUntil) event.preventDefault();
