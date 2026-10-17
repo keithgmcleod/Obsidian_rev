@@ -179,6 +179,8 @@ def tint_palladium(path):
         raise ValueError("Palladium base-colour PNG is truncated")
     updated_png, dimensions = warm_silver_png(original_png)
 
+    replacements = {}
+
     # If the baked image is shared by other materials, clone its image and
     # texture so only the Palladium full-card body receives the colour change.
     shared = []
