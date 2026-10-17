@@ -145,7 +145,8 @@ def fix_glb(path):
             changed += 1
 
     if not changed:
-        raise ValueError("No Palladium metallic maps needed channel repacking")
+        print(f"All {len(target_views)} Palladium metallic-roughness maps already packed; leaving GLB unchanged")
+        return
 
     ordered_views = sorted(
         enumerate(document.get("bufferViews", [])),
