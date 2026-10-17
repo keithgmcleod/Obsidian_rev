@@ -31,7 +31,7 @@ const cards = {
     title: "BILT PALLADIUM",
     intro: "A polished expression of precision and light.",
     details: "Explore the BILT Palladium card as a high-detail 3D model, baked for the web.",
-    source: "./palladium-2k.glb?v=palladium-mr-channel-fix-20261017",
+    source: "./palladium-2k.glb?v=palladium-4k-bake-2k-20261017",
     specs: { format: "GLB 2.0", parts: "6 objects", geometry: "3,783,112 triangles", download: "20.1 MB" },
   },
 };
