@@ -537,6 +537,8 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0, textDesign = t
   context.filter = 'blur(10px)'; context.globalAlpha = .28; context.drawImage(mask, 0, 0);
   context.filter = 'blur(3px)'; context.globalAlpha = .5; context.drawImage(mask, 0, 0);
   context.filter = 'blur(0.8px)'; context.globalAlpha = .99; context.drawImage(mask, 0, 0);
+  // Blur the paint coats once; never run a canvas filter for every pigment dot.
+  context.filter = 'none';
   const image = context.getImageData(0, 0, w, h), data = image.data;
   for (let i = 3; i < data.length; i += 4) {
     const grain = random();
@@ -561,7 +563,7 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0, textDesign = t
   context.globalCompositeOperation = 'source-over';
   context.fillStyle = colour; context.globalAlpha = .28;
   // Larger, individually visible droplets accumulate outside the painted edges.
-  for (let dot = 0; dot < Math.floor(w * h / 16); dot++) {
+  for (let dot = 0; dot < Math.min(16000, Math.floor(w * h / 16)); dot++) {
     const x = Math.floor(random() * w), y = Math.floor(random() * h);
     if (data[(y * w + x) * 4 + 3] < 4 || data[(y * w + x) * 4 + 3] > 140) continue;
     context.globalAlpha = .16 + random() * .5;
