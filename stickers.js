@@ -513,7 +513,7 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0, textDesign = t
       outline.drawImage(mask, Math.cos(angle) * 9, Math.sin(angle) * 9);
     }
     outline.globalCompositeOperation = 'source-in';
-    const rgb = colour.match(/[a-f\d]{2}/gi).map(value => Math.round(parseInt(value, 16) * .38));
+    const rgb = colour.match(/[a-f\d]{2}/gi).map(value => Math.round(parseInt(value, 16) * .72));
     outline.fillStyle = `rgb(${rgb.join(',')})`; outline.fillRect(0, 0, w, h);
   }
   const reveal = document.createElement('canvas'); reveal.width = w; reveal.height = h;
@@ -545,39 +545,39 @@ function graffitiPaintTexture(source, colour, seed, rotation = 0, textDesign = t
   const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
   const context = canvas.getContext('2d', { willReadFrequently: true });
   // Two soft coats give the edges a cloud of overspray around the solid letters.
-  context.filter = 'blur(18px)'; context.globalAlpha = .5; context.drawImage(mask, 0, 0);
-  context.filter = 'blur(6px)'; context.globalAlpha = .55; context.drawImage(mask, 0, 0);
+  context.filter = 'blur(10px)'; context.globalAlpha = .28; context.drawImage(mask, 0, 0);
+  context.filter = 'blur(3px)'; context.globalAlpha = .5; context.drawImage(mask, 0, 0);
   if (textDesign) { context.filter = 'none'; context.globalAlpha = .98; context.drawImage(letterOutline, 0, 0); }
-  context.filter = 'none'; context.globalAlpha = .94; context.drawImage(mask, 0, 0);
+  context.filter = 'none'; context.globalAlpha = .99; context.drawImage(mask, 0, 0);
   const image = context.getImageData(0, 0, w, h), data = image.data;
   for (let i = 3; i < data.length; i += 4) {
     const grain = random();
     // Fine pigment variation inside the text and sparse droplets in the spray cloud.
     const pixel = (i - 3) / 4, x = pixel % w, y = Math.floor(pixel / w);
-    const mottling = .75 + .17 * Math.sin(x * .073 + Math.sin(y * .09) * 2) + .08 * Math.sin(y * .13 + x * .037);
+    const mottling = .97 + .02 * Math.sin(x * .073 + Math.sin(y * .09) * 2) + .01 * Math.sin(y * .13 + x * .037);
     if (data[i] > 150) {
-      data[i] = Math.round(data[i] * (grain < .12 ? .1 : (.65 + grain * .35) * mottling));
-      const tone = .85 + random() * .15;
+      data[i] = Math.round(data[i] * (.94 + grain * .06) * mottling);
+      const tone = .96 + random() * .04;
       data[i - 3] *= tone; data[i - 2] *= tone; data[i - 1] *= tone;
-    } else data[i] = Math.min(255, Math.round(data[i] * (grain > .72 ? 1.7 : .18)));
-    data[i] = Math.round(data[i] * (textDesign ? .96 : .58));
+    } else data[i] = Math.min(255, Math.round(data[i] * (grain > .62 ? 1.7 : .1)));
+    data[i] = Math.round(data[i] * .99);
   }
   context.putImageData(image, 0, 0);
   // Uneven gaps break up the coat into islands of pigment.
-  context.globalCompositeOperation = 'destination-out'; context.globalAlpha = textDesign ? .18 : .55;
-  for (let gap = 0; gap < Math.floor(w * h / 260); gap++) {
+  context.globalCompositeOperation = 'destination-out'; context.globalAlpha = .06;
+  for (let gap = 0; gap < Math.floor(w * h / 900); gap++) {
     const x = Math.floor(random() * w), y = Math.floor(random() * h);
     if (data[(y * w + x) * 4 + 3] < 20) continue;
-    context.beginPath(); context.ellipse(x, y, .8 + random() * 3, .7 + random() * 2, random() * Math.PI, 0, Math.PI * 2); context.fill();
+    context.beginPath(); context.ellipse(x, y, .25 + random() * .6, .25 + random() * .5, random() * Math.PI, 0, Math.PI * 2); context.fill();
   }
   context.globalCompositeOperation = 'source-over';
   context.fillStyle = colour; context.globalAlpha = .28;
   // Larger, individually visible droplets accumulate outside the painted edges.
-  for (let dot = 0; dot < Math.floor(w * h / 35); dot++) {
+  for (let dot = 0; dot < Math.floor(w * h / 16); dot++) {
     const x = Math.floor(random() * w), y = Math.floor(random() * h);
     if (data[(y * w + x) * 4 + 3] < 4 || data[(y * w + x) * 4 + 3] > 140) continue;
-    context.globalAlpha = .12 + random() * .32;
-    context.beginPath(); context.ellipse(x, y, .6 + Math.pow(random(), 2) * 3.6, .6 + random() * 2.5, random() * Math.PI, 0, Math.PI * 2); context.fill();
+    context.globalAlpha = .16 + random() * .5;
+    context.beginPath(); context.ellipse(x, y, .25 + Math.pow(random(), 2) * .9, .25 + random() * .7, random() * Math.PI, 0, Math.PI * 2); context.fill();
   }
   const texture = new THREE.CanvasTexture(canvas);
   const revealPixels = revealContext.getImageData(0, 0, w, h);
