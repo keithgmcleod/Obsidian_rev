@@ -9,7 +9,7 @@ import tempfile
 from PIL import Image
 
 
-STRENGTH = 0.10
+STRENGTH = 0.05
 EDGE_FADE_PIXELS = 24
 FRONT_UV_BOUNDS = (
     0.021611575037240982,
@@ -62,7 +62,7 @@ def local_edge_strength(u, v, width, height):
     return t * t * (3.0 - 2.0 * t)
 
 
-def attenuate_front_normals(png_bytes, already_at_target_strength):
+def attenuate_front_normals(png_bytes, source_strength, edge_already_smoothed):
     with Image.open(io.BytesIO(png_bytes)) as source:
         source.load()
         if source.mode not in ("RGB", "RGBA"):
@@ -75,15 +75,16 @@ def attenuate_front_normals(png_bytes, already_at_target_strength):
     split_x = width // 2
     pixels = image.load()
     neutral = (128.0 / 255.0 * 2.0 - 1.0, 128.0 / 255.0 * 2.0 - 1.0, 1.0)
+    additional_scale = min(1.0, STRENGTH / source_strength)
 
     for y in range(height):
         v = 1.0 - ((y + 0.5) / height)
         for x in range(split_x):
             u = (x + 0.5) / width
-            edge_strength = local_edge_strength(u, v, width, height)
-            if already_at_target_strength and edge_strength >= 1.0:
+            edge_strength = 1.0 if edge_already_smoothed else local_edge_strength(u, v, width, height)
+            strength = additional_scale * edge_strength
+            if strength >= 1.0:
                 continue
-            strength = edge_strength if already_at_target_strength else STRENGTH * edge_strength
             pixel = pixels[x, y]
             nx = (pixel[0] / 255.0 * 2.0 - 1.0) * strength + neutral[0] * (1.0 - strength)
             ny = (pixel[1] / 255.0 * 2.0 - 1.0) * strength + neutral[1] * (1.0 - strength)
@@ -160,14 +161,13 @@ def reduce_front_relief(path):
     image_index = document["textures"][texture_index]["source"]
     image = document["images"][image_index]
     extras = image.setdefault("extras", {})
-    already_at_target_strength = (
-        abs(float(extras.get(STRENGTH_MARKER, 1.0)) - STRENGTH) < 1e-9
-    )
-    if (
-        already_at_target_strength
-        and int(extras.get(EDGE_MARKER, -1)) == EDGE_FADE_PIXELS
-    ):
-        print("Palladium front relief already has the 10 percent strength and smooth edge fade.")
+    source_strength = float(extras.get(STRENGTH_MARKER, 1.0))
+    if source_strength <= 0 or source_strength > 1:
+        raise ValueError(f"Invalid prior normal strength marker: {source_strength}")
+    edge_already_smoothed = int(extras.get(EDGE_MARKER, -1)) == EDGE_FADE_PIXELS
+
+    if abs(source_strength - STRENGTH) < 1e-9 and edge_already_smoothed:
+        print("Palladium front relief already has the 5 percent strength and smooth edge fade.")
         return
 
     view_index = image["bufferView"]
@@ -176,13 +176,13 @@ def reduce_front_relief(path):
     length = view["byteLength"]
     original_png = bytes(binary[offset:offset + length])
     updated_png, width, height, split_x = attenuate_front_normals(
-        original_png, already_at_target_strength
+        original_png, source_strength, edge_already_smoothed
     )
 
     extras[STRENGTH_MARKER] = STRENGTH
     extras[EDGE_MARKER] = EDGE_FADE_PIXELS
     extras["biltFrontUvBounds"] = list(FRONT_UV_BOUNDS)
-    image["name"] = "Palladium 2K tangent normal; front relief 10 percent with smooth edge fade"
+    image["name"] = "Palladium 2K tangent normal; front relief 5 percent with smooth edge fade"
     view["_replacementBytes"] = updated_png
     output = make_glb(document, binary)
 
@@ -198,8 +198,8 @@ def reduce_front_relief(path):
         raise
 
     print(
-        f"Set Palladium front normal relief to {STRENGTH:.0%}, with a smooth "
-        f"{EDGE_FADE_PIXELS}-pixel fade at the Blender UV perimeter "
+        f"Reduced Palladium front normal relief from {source_strength:.0%} to {STRENGTH:.0%}, "
+        f"with a smooth {EDGE_FADE_PIXELS}-pixel fade at the Blender UV perimeter "
         f"(u={FRONT_UV_BOUNDS[0]:.4f}..{FRONT_UV_BOUNDS[1]:.4f}, "
         f"v={FRONT_UV_BOUNDS[2]:.4f}..{FRONT_UV_BOUNDS[3]:.4f}); "
         "back and other card textures are unchanged."
