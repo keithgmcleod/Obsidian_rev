@@ -622,7 +622,11 @@ function disposeDecal(entry) {
   entry.decal?.removeFromParent(); entry.decal?.geometry.dispose();
   entry.decal?.material.dispose(); entry.decal = null;
 }
+function uprightRotation(rotation) {
+  return Math.max(-20, Math.min(20, Number(rotation) || 0));
+}
 function rebuild(entry) {
+  entry.rotation = uprightRotation(entry.rotation);
   disposeDecal(entry);
   if (entry.finish === 'spray' && (entry.paintRotation !== entry.rotation || entry.renderedPaintColour !== entry.paintColour)) {
     if (entry.paintRotation != null) entry.texture.dispose();
