@@ -24,13 +24,15 @@ def patch_glb(path):
     changed = []
     for material in document.get("materials", []):
         name = material.get("name", "")
-        if name.startswith("Palladium ") and "flattened PBR" in name:
+        if name.startswith("Palladium ") and (
+            "flattened PBR" in name or "2K baked PBR" in name
+        ):
             material["alphaMode"] = "OPAQUE"
             material.pop("alphaCutoff", None)
             changed.append(name)
 
     if not changed:
-        raise ValueError("No flattened Palladium materials found to patch")
+        raise ValueError("No baked Palladium materials found to patch")
 
     json_bytes = json.dumps(document, separators=(",", ":")).encode("utf-8")
     json_bytes += b" " * ((-len(json_bytes)) % 4)
