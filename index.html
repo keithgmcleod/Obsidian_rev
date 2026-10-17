@@ -16,7 +16,7 @@
     <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer-effects@1.5.0/dist/model-viewer-effects.min.js"></script>
     <script type="module" src="./viewer-stability.js?v=memory-1"></script>
     <script src="./app.js?v=palladium-mr-channel-fix-20261017" defer></script>
-    <script type="module" src="./stickers.js?v=upright-designs-1"></script>
+    <script type="module" src="./stickers.js?v=five-colour-palette-1"></script>
   </head>
   <body>
     <header class="topbar">
@@ -44,8 +44,8 @@
             <div class="sticker-picker" aria-label="Choose a sticker"></div>
             <div class="paint-options">
               <label>Apply as <select id="sticker-finish"><option value="sticker">Vinyl sticker</option><option value="spray">Spray paint</option></select></label>
-              <div id="paint-palette" role="group" aria-label="Bilt paint colours"></div>
-              <label>Custom colour <input id="spray-colour" type="color" value="#97c6ea" /></label>
+              <div id="paint-palette" role="group" aria-label="Paint colours"></div>
+              <input id="spray-colour" type="hidden" value="#97c6ea" /><p>Random paint colour for each placement. Pick a swatch to choose the next colour or recolour selected paint.</p>
               <p>Choose a design, then click the card. Spray paint follows the surface without paper folds.</p>
             </div>
             <div id="graffiti-editor" hidden>

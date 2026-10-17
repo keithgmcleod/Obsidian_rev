@@ -10,20 +10,25 @@ const finishInput = document.querySelector('#sticker-finish');
 const paintColour = document.querySelector('#spray-colour');
 const paintPalette = document.querySelector('#paint-palette');
 const paletteColours = [
-  ['Bilt blue', '#97c6ea'], ['Deep blue', '#346da0'], ['Gold', '#edd496'],
-  ['Warm gold', '#e8cb94'], ['Ice blue', '#d1e6fb'], ['Peach', '#fbdfc9'],
-  ['Blush', '#ffdadc'], ['Pink', '#fadbee'], ['Sage', '#e4e6c6'],
-  ['Warm grey', '#edeae8'], ['White', '#fbfbfb'], ['Ink', '#010a13'],
+  ['Light blue', '#97c6ea'], ['Red', '#ef3340'], ['Yellow', '#ffdf00'],
+  ['White', '#ffffff'], ['Lime green', '#b6ef3c'],
 ];
+let nextPaintColour = null;
+paintPalette.style.gridTemplateColumns = 'repeat(5, 1fr)';
+function randomPaintColour() {
+  return paletteColours[Math.floor(Math.random() * paletteColours.length)][1];
+}
 function syncPaintPalette() {
   paintPalette.querySelectorAll('button').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.colour === paintColour.value)));
 }
 function choosePaintColour(colour) {
+  if (!paletteColours.some(([, value]) => value === colour)) return;
+  nextPaintColour = colour;
   paintColour.value = colour; syncPaintPalette();
   const entry = selectedEntry || entries().at(-1);
   if (ready && entry?.finish === 'spray') {
     entry.paintColour = colour; rebuild(entry);
-    message('Paint colour updated. This colour will also be used for new paint.');
+    message('Paint colour updated. Choose a palette colour to customize this placement.');
   } else message('Paint colour selected. Choose Spray paint to apply it.');
 }
 paletteColours.forEach(([name, colour]) => {
@@ -33,8 +38,6 @@ paletteColours.forEach(([name, colour]) => {
   button.addEventListener('click', () => choosePaintColour(colour)); paintPalette.append(button);
 });
 syncPaintPalette();
-paintColour.addEventListener('input', () => choosePaintColour(paintColour.value));
-paintColour.addEventListener('change', () => choosePaintColour(paintColour.value));
 const assets = [
   ['v-ring-seal-bilt-neighborhood', 'Bilt neighborhood'],
   ['v-diecut-rent-day', 'Rent day'],
@@ -741,7 +744,8 @@ async function place(event) {
   const entry = { meshIndex: meshes.indexOf(hit.object), point: hit.object.worldToLocal(hit.point.clone()),
     normal: hit.face.normal.clone(), size: randomSliderValue(sizeInput), rotation: randomSliderValue(rotationInput), folds: randomSliderValue(foldsInput),
     id: ++stickerSequence, seed: freshFoldSeed(design.url), designKey: design.url, customText: design.custom ? design.text : null,
-    finish: finishInput.value, paintColour: paintColour.value, decal: null };
+    finish: finishInput.value, paintColour: nextPaintColour || randomPaintColour(), decal: null };
+  nextPaintColour = null;
   message('Attaching sticker…');
   try {
     entry.texture = await textureFor(entry.finish === 'spray' && design.custom ? { url: design.paintUrl } : design);
@@ -752,6 +756,7 @@ async function place(event) {
     }
     if (!cards.has(key)) cards.set(key, []);
     cards.get(key).push(entry); rebuild(entry); selectedEntry = entry;
+    if (entry.finish === 'spray') { paintColour.value = entry.paintColour; syncPaintPalette(); }
     foldsInput.disabled = entry.finish === 'spray';
     sizeInput.value = entry.size; rotationInput.value = entry.rotation; foldsInput.value = entry.folds;
     message(entry.finish === 'spray' ? `${design.label} sprayed onto the card. Adjust size or rotation, or place another.` : `${design.label} attached. Adjust size, rotation or folds, or click to place another.`);
