@@ -1,5 +1,4 @@
 const viewer = document.querySelector("#obsidian-model");
-const edgeLightRig = document.querySelector("#edge-light-rig");
 const stage = document.querySelector(".viewer-stage");
 const progressFill = document.querySelector(".progress-fill");
 const loadState = document.querySelector(".load-state");
@@ -41,16 +40,6 @@ const frontTilt = { yaw: 15, pitch: 15 };
 const baseOrientation = { roll: 0, pitch: -15, yaw: -15 };
 const baseCameraOrbit = { theta: 0, phi: 82, radius: "110%" };
 
-function positionEdgeLightRig() {
-  if (!edgeLightRig || !viewer?.model || !viewer?.getDimensions || !viewer?.getCameraTarget) return;
-  const dimensions = viewer.getDimensions();
-  const target = viewer.getCameraTarget();
-  const unit = Math.max(dimensions?.x || dimensions?.y || 0, 0.001);
-  if (![target?.x, target?.y, target?.z, unit].every(Number.isFinite)) return;
-
-  edgeLightRig.setAttribute("offset", `${target.x}m ${target.y}m ${target.z}m`);
-  edgeLightRig.setAttribute("scale", `${unit} ${unit} ${unit}`);
-}
 let pointer = { x: 0, y: 0 };
 let currentPointer = { x: 0, y: 0 };
 let frame = 0;
@@ -318,7 +307,6 @@ function reduceBlueMetalness() {
 
 viewer.addEventListener("load", () => {
   reduceBlueMetalness();
-  positionEdgeLightRig();
   updateCardTilt();
   queueReflectionAlignment();
   if (progressFill) progressFill.style.width = "100%";
