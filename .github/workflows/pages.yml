@@ -41,6 +41,8 @@ jobs:
           python-version: "3.12"
       - name: Fix Palladium baked material alpha
         run: python scripts/fix_palladium_alpha.py palladium-2k.glb
+      - name: Remove Palladium edge bump maps
+        run: python scripts/remove_palladium_edge_bump.py palladium-2k.glb
       - name: Install image processing dependency
         run: python -m pip install --disable-pip-version-check Pillow
       - name: Reduce Palladium front relief to 5 percent
