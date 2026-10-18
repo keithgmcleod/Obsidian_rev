@@ -34,7 +34,7 @@ def read_glb(path):
     document = json.loads(data[20:20 + json_length])
 
     bin_header = 20 + json_length
-    if data[bin_header + 4:bin_header + 8] != b"BIN\\x00":
+    if data[bin_header + 4:bin_header + 8] != b"BIN\x00":
         raise ValueError(f"{path} is missing its GLB BIN chunk")
     bin_length = struct.unpack_from("<I", data, bin_header)[0]
     bin_start = bin_header + 8
@@ -87,7 +87,7 @@ def make_glb(document, binary):
         struct.pack("<4sII", b"glTF", 2, 12 + 8 + len(json_bytes) + 8 + len(bin_bytes))
         + struct.pack("<I4s", len(json_bytes), b"JSON")
         + json_bytes
-        + struct.pack("<I4s", len(bin_bytes), b"BIN\\x00")
+        + struct.pack("<I4s", len(bin_bytes), b"BIN\x00")
         + bin_bytes
     )
 
